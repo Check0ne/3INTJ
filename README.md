@@ -1,6 +1,6 @@
 # BUS_project
 
-2D breast ultrasound image에서 breast tumor를 segmentation, classification 하기 위한 project입니다.
+2D breast ultrasound image에서 breast tumor를 segmentation, classification 하기 위한 project 입니다.
 
 실제로 tumor의 boundary characteristic과 shape는 radiologists가 tumor의 class를 판단할 때 도움을 줍니다.
 
