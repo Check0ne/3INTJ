@@ -3,7 +3,7 @@
 1. mask 병합
 2. input image로 cropped image 대신 resized image 사용
 3. validation, test dataset transform 확인
-4. UNet input, output channel 확인..
+4. UNet input, output channel 확인....
 '''
 import os
 import numpy as np
