@@ -1,4 +1,14 @@
+'''
+수정해야 할 사항
+1. mask 병합
+2. input image로 cropped image 대신 resized image 사용
+3. validation, test dataset transform 확인
+4. UNet input, output channel 확인
+'''
 import os
+import numpy as np
+import matplotlib.pyplot as plt
+import PIL
 from PIL import Image
 from glob import glob
 
@@ -14,7 +24,7 @@ image_files = [
 ]
 
 seg_files = [
-    sorted(glob(os.path.join(data_dir, class_names[i], "*mask.png")))
+    sorted(glob(os.path.join(data_dir, class_names[i], "*mask.png"))) # mask가 여러 개인 image의 경우, 첫 번째 mask만 불러오고 있다. --> mask 병합이 필요하다.
     for i in range (num_class)
 ]
 
@@ -27,10 +37,10 @@ image_files_list = []
 seg_files_list = []
 image_class = []
 
-for i in range(num_class): # class 개수 만큼
+for i in range(num_class): 
     image_files_list.extend(image_files[i]) # image_files[i] 리스트의 요소(image)를 image_files_list에 추가
     seg_files_list.extend(seg_files[i])
-    image_class.extend([i] * num_each[i]) # class 이름 리스트 생성 [A, A, A, ... B, B, B, ... C, C, C ...] class 요소의 개수는 num_each 만큼 
+    image_class.extend([i] * num_each[i]) # class 이름 리스트 생성 [A, A, A, ... B, B, B, ... C, C, C ...] class 요소의 개수는 num_each 
 num_total = len(image_class) # image_class의 요소 개수
 image_width, image_height = Image.open(image_files_list[0]).size # 하나의 이미지 열어서 width, height 값 추출
 
@@ -39,22 +49,17 @@ print(f"Image dimensions: {image_width} x {image_height}")
 print(f"Label names: {class_names}")
 print(f"Label counts: {num_each}")
 
-import numpy as np
-import matplotlib.pyplot as plt
-import PIL
-
 plt.subplots(3, 3, figsize=(8, 8))
 for i, k in enumerate(np.random.randint(num_total, size=9)):
     im = PIL.Image.open(seg_files_list[500])
     arr = np.array(im)
-    #print(arr.shape)
     plt.subplot(3, 3, i + 1)
     plt.xlabel(class_names[image_class[k]])
     plt.imshow(arr, cmap="gray", vmin=0, vmax=255)
 plt.tight_layout()
 plt.show()
 
-# normal_mask이 3차원이여서 이를 2차원으로 줄여주는 작업이 필요하다. 
+# normal_mask만 numpy arry가 3차원이다. 기존의 channel=3을 없애고 다시 channel=1을 추가했다. transform까지 정상적으로 되는 것을 확인할 수 있다.
 # 기존에는 MONAI에서 파일명으로 접근했지만, 배열을 수정해야 하기 때문에 파일을 열어서 배열을 수정하고, 수정한 배열을 리스트에 넣는다.
 images = [np.array(PIL.Image.open(i)) for i in image_files_list]
 segsorigin = [np.array(PIL.Image.open(i)) for i in seg_files_list]
@@ -62,7 +67,8 @@ segs = [np.expand_dims(np.array(PIL.Image.open(i)), axis=0) for i in seg_files_l
 segs0 = [np.expand_dims(np.full((np.array(PIL.Image.open(i)).shape[0], np.array(PIL.Image.open(i)).shape[1]), False), axis=0) for i in seg_files_list[647:]] 
 segs.extend(segs0)
 
-test_number = 660
+# shape 변형이 잘 되었는지 확인할 수 있다.
+test_number = 660 
 print(segsorigin[test_number].shape)
 print(segs[test_number].shape)
 
@@ -92,14 +98,14 @@ from monai.visualize import plot_2d_or_3d_image
 
 from torch.utils.tensorboard import SummaryWriter
 
-crop_size = 176
+crop_size = 176 # UNet에서 maxpoolking을 4번 실행하기 때문에 crop_size를 16의 배수로 실행한다. --> 데이터 손실이 발생하므로 crop 말고 resize로 해보자.
 
 train_imtrans = Compose(
     [
         #LoadImage(image_only=True, ensure_channel_first=True), # numpy 배열 그대로 넣어주기 때문에 load하지 않는다.
         #EnsureChannelFirst(),
-        AsChannelFirst(), # channel이 shape의 맨 뒤에 있는 상태여서 앞으로 옮긴다.
-        ScaleIntensity()e,
+        AsChannelFirst(), # shape가 (, , channel)이다. MONAI framework의 transform에서는 (channel, , ) shape를 가정하므로 변환한다.
+        ScaleIntensity(),
         RandSpatialCrop((crop_size, crop_size), random_size=False),
         RandRotate90(prob=0.5, spatial_axes=(0, 1)),
     ]
@@ -112,7 +118,7 @@ train_segtrans = Compose(
         RandRotate90(prob=0.5, spatial_axes=(0, 1)),
     ]
 ) 
-# 기존의 channel = 3을 없애고 다시 channel =1 을 first에 추가했다. transform까지 정상적으로 되는 것을 확인할 수 있다.
+
 
 ds = ArrayDataset(segs, train_segtrans) 
 print(type(ds))
@@ -120,10 +126,10 @@ for i in ds[640:]:
     print(i.shape)
 
 val_imtrans = Compose([AsChannelFirst(), ScaleIntensity()])
-val_segtrans = Compose([ScaleIntensity()]) #  validation에서는 crop, rotate를 하지 않는다.
+val_segtrans = Compose([ScaleIntensity()]) #  validation에서는 crop, rotate를 하지 않는다. --> Check
 
 test_imtrans = Compose([AsChannelFirst(), ScaleIntensity()])
-test_segtrans = Compose([ScaleIntensity()]) #  test 에서도..? check
+test_segtrans = Compose([ScaleIntensity()]) #  test에서는 crop, rotate를 하지 않는다. --> Check
 
 # define array dataset, data loader
 check_ds = ArrayDataset(images, train_imtrans, segs, train_segtrans)
@@ -132,44 +138,25 @@ im, seg = monai.utils.misc.first(check_loader)
 print(im.shape, seg.shape)
 
 # shuffle
-val_frac = 0.15
-test_frac = 0.15
 length = len(images)
 indices = np.arange(length)
 np.random.shuffle(indices)
+images = [images[i] for i in indices] # shuffled list
+segs = [segs[i] for i in indices] # shuffled list
 
-#images = [images[i] for i in indices] ### shuffled list
-#segs = [segs[i] for i in indices] ### shuffled list
-
+val_frac = 0.15
+test_frac = 0.15
 test_split = int(test_frac * length)
 val_split = int(val_frac * length) + test_split
 
-print(test_split)
-print(val_split)
-
-num_training = num_total-val_split
-num_val = val_split-test_split
-num_test = test_split
-
-#test_indices = indices[:test_split]
-#val_indices = indices[test_split:val_split]
-#train_indices = indices[val_split:]
-
-# create a training data loader --> 그 전에 섞어야 할 것 같은데...
+# create a training data loader 
 train_ds = ArrayDataset(images[val_split:], train_imtrans, segs[val_split:], train_segtrans)
-print(len(train_ds))
 train_loader = DataLoader(train_ds, batch_size=2, shuffle=True, num_workers=8, pin_memory=torch.cuda.is_available())
 # create a validation data loader
 val_ds = ArrayDataset(images[test_split:val_split], val_imtrans, segs[test_split:val_split], val_segtrans)
 val_loader = DataLoader(val_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 # create a test data loader
 test_ds = ArrayDataset(images[:test_split], test_imtrans, segs[:test_split], test_segtrans)
-
-##print(len(segs))
-#for i in train_ds:
-#    print(i[0].shape)
-#    print(i[1].shape)
-    
 test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 
 print(f"Training count: {len(train_ds)}, Validation count: {len(val_ds)}, Test count: {len(test_ds)}")
@@ -189,7 +176,7 @@ print(len(train_ds))
 
 model = monai.networks.nets.UNet(
     spatial_dims=2, 
-    in_channels=3, ## 3
+    in_channels=3, # .png image의 channel이 3이다. --> ultrasound image가 흑백이기 때문에 channel=1로 변형해야 할 것으로 보인다.
     out_channels=1,
     channels=(16, 32, 64, 128, 256),
     strides=(2, 2, 2, 2),
