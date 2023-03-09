@@ -1,5 +1,6 @@
 # BUS_project
 Breast Ultrasound Image에서 breast tumor를 segmentation, classification 하기 위한 project입니다.
+
 segmentation과 classification 각각을 single-task learning으로 수행하고, multi-task learning까지 할 계획입니다.
 
 Dataset으로는 BUSI를 사용했습니다.
