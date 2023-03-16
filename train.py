@@ -349,3 +349,5 @@ for epoch in range(40):
             plot_2d_or_3d_image(val_outputs, epoch + 1, writer, index=0, tag="output")
 print(f"train completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}")
 writer.close()
+
+##test
