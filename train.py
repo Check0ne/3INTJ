@@ -2,7 +2,7 @@
 '''
 수정해야 할 사항
 1. UNet input, output channel 조정
-2. Validation 방법 수정
+2. Validation 방법 수정.
 '''
 import os
 import numpy as np
@@ -12,7 +12,7 @@ from PIL import Image
 from glob import glob
 
 # data load
-data_dir = '/workspace/Dataset_BUSI/Dataset_BUSI_with_GT'
+data_dir = '/workspace/project/Dataset_BUSI/Dataset_BUSI_with_GT'
 
 class_names = ['benign', 'malignant', 'normal']
 num_class = len(class_names)
@@ -262,7 +262,7 @@ print('Device:', device)
 print('Current cuda device:', torch.cuda.current_device())
 print('Count of using GPUs:', torch.cuda.device_count())
 
-print(len(train_ds))
+print(len(train_ds)) ##test
 
 model = monai.networks.nets.UNet(
     spatial_dims=2, 
