@@ -147,14 +147,20 @@ for i in range(len(segs)):
             
 print(len(new_segs)) 
 
-'''
-m = 100
+
+m = 2
 print(new_seg_files_list[m])
-plt.imshow(new_seg[m]*255, cmap = "gray", vmin=0, vmax=255)
+plt.imshow(new_segs[m]*255, cmap = "gray", vmin=0, vmax=255)
 plt.tight_layout()
 plt.show()
-'''
 #%%
+
+## label preprocess (segs를 수정해야 한다. channel=1에서 channel=2로)
+label = []
+for i in new_segs:
+    label.append(np.concatenate([i == True, i == False], axis=2))
+
+print(len(label), label[0].shape) # (720, 1056, 2)로 변환 --> 그런데 이러면 validation이 잘 작동할지.. --> check
 
 # new_seg_files_list는 segmentation mask 파일 이름으로 이루어진 list (총 780개)
 # new_seg는 segmentation mask array로 이루어진 list (True, False, 총 780개, 병합 완료)
@@ -180,9 +186,9 @@ from monai.transforms import (
     RandRotate,
     RandFlip,
     RandZoom,
+    SaveImage,
 )
 from monai.visualize import plot_2d_or_3d_image
-
 from torch.utils.tensorboard import SummaryWriter
 
 crop_size = 512 # UNet에서 maxpoolking을 4번 실행하기 때문에 crop_size를 16의 배수로 실행한다. --> 데이터 손실이 발생하므로 crop 말고 resize로 해보자.
@@ -222,7 +228,7 @@ test_imtrans = Compose([AsChannelFirst(), ScaleIntensity()])
 test_segtrans = Compose([AsChannelFirst(), ScaleIntensity()]) #  test에서는 crop, rotate를 하지 않는다. --> Check
 
 # define array dataset, data loader
-check_ds = ArrayDataset(images, train_imtrans, new_segs, train_segtrans)
+check_ds = ArrayDataset(images, train_imtrans, label, train_segtrans) 
 check_loader = DataLoader(check_ds, batch_size=10, num_workers=2, pin_memory=torch.cuda.is_available())
 im, seg = monai.utils.misc.first(check_loader)
 print(im.shape, seg.shape)
@@ -232,7 +238,7 @@ length = len(images)
 indices = np.arange(length)
 np.random.shuffle(indices)
 images = [images[i] for i in indices] # shuffled list
-new_segs = [new_segs[i] for i in indices] # shuffled list
+label = [label[i] for i in indices] # shuffled list
 
 val_frac = 0.15
 test_frac = 0.15
@@ -240,20 +246,20 @@ test_split = int(test_frac * length)
 val_split = int(val_frac * length) + test_split
 
 # create a training data loader 
-train_ds = ArrayDataset(images[val_split:], train_imtrans, new_segs[val_split:], train_segtrans)
+train_ds = ArrayDataset(images[val_split:], train_imtrans, label[val_split:], train_segtrans)
 train_loader = DataLoader(train_ds, batch_size=6, shuffle=True, num_workers=8, pin_memory=torch.cuda.is_available())
 # create a validation data loader
-val_ds = ArrayDataset(images[test_split:val_split], val_imtrans, new_segs[test_split:val_split], val_segtrans)
+val_ds = ArrayDataset(images[test_split:val_split], val_imtrans, label[test_split:val_split], val_segtrans)
 val_loader = DataLoader(val_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 # create a test data loader
-test_ds = ArrayDataset(images[:test_split], test_imtrans, new_segs[:test_split], test_segtrans)
+test_ds = ArrayDataset(images[:test_split], test_imtrans, label[:test_split], test_segtrans)
 test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 
 print(f"Training count: {len(train_ds)}, Validation count: {len(val_ds)}, Test count: {len(test_ds)}")
 
 dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 post_trans = Compose([Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
-
+saver = SaveImage(output_dir="./output", output_ext=".png", output_postfix="seg")
 # create UNet, DiceLoss and Adam optimizer
 os.environ["CUDA_VISIBLE_DEVICES"]= "0"  # Set the GPU 0 to use
 
@@ -267,7 +273,7 @@ print(len(train_ds)) ##test
 model = monai.networks.nets.UNet(
     spatial_dims=2, 
     in_channels=1,
-    out_channels=1,
+    out_channels=2,
     channels=(16, 32, 64, 128, 256),
     strides=(2, 2, 2, 2),
     num_res_units=2,
@@ -285,9 +291,11 @@ writer = SummaryWriter()
 
 print(len(train_ds))
 
-for epoch in range(40):
+num_epoch = 40
+
+for epoch in range(num_epoch):
     print("-" * 10)
-    print(f"epoch {epoch + 1}/{10}")
+    print(f"epoch {epoch + 1}/{num_epoch}")
     model.train()
     epoch_loss = 0
     step = 0
@@ -350,4 +358,41 @@ for epoch in range(40):
 print(f"train completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}")
 writer.close()
 
-##test
+
+
+
+#test
+import torchvision.transforms as T
+model.load_state_dict(torch.load("best_metric_model_segmentation2d_array.pth"))
+transform = T.ToPILImage()
+model.eval()
+with torch.no_grad():
+    for test_data in test_loader:
+        test_images, test_labels = test_data[0].to(device), test_data[1].to(device)
+        # define sliding window size and batch size for windows inference
+        roi_size = (crop_size, crop_size)
+        sw_batch_size = 4
+        test_outputs = sliding_window_inference(test_images, roi_size, sw_batch_size, model)
+        test_outputs = [post_trans(i) for i in decollate_batch(test_outputs)]
+        test_labels = decollate_batch(test_labels)
+        # compute metric for current iteration
+        dice_metric(y_pred=test_outputs, y=test_labels)
+        saveimg = transform(test_images[0])
+        print(torch.max(test_images[0]))
+        print(torch.min(test_images[0]))
+        saveimg.save("input.png")
+        saveimg = transform(test_outputs[0])
+        print(torch.max(test_outputs[0]))
+        print(torch.min(test_outputs[0]))
+        saveimg.save("output.png")
+        arr = test_labels[0].cpu().numpy().astype('float32')
+        arr = (arr*255).astype('uint8')
+        saveimg = PIL.Image.fromarray(arr[0].squeeze(), mode = 'L')
+        #saveimg = transform(test_labels[0])
+        print(torch.max(test_labels[0]))
+        print(torch.min(test_labels[0]))
+        saveimg.save("label.png")
+    # aggregate the final mean dice result
+    print("evaluation metric:", dice_metric.aggregate().item())
+    # reset the status
+    dice_metric.reset()
