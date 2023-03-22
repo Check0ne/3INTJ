@@ -13,7 +13,7 @@ from PIL import Image
 from glob import glob
 
 # data load
-data_dir = '/workspace/Dataset_BUSI/Dataset_BUSI_with_GT'
+data_dir = '/workspace/3INTJ/Dataset_BUSI/Dataset_BUSI_with_GT'
 
 class_names = ['benign', 'malignant', 'normal']
 num_class = len(class_names)
@@ -397,3 +397,5 @@ with torch.no_grad():
     # reset the status
     dice_metric.reset()
 #%%
+
+#test
