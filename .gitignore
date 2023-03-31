@@ -1,4 +1,4 @@
 /Dataset_BUSI
 /runs
 *.png
-# test
+*.pyc
