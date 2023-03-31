@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from important.base import modules as md
-
+# 이것 수정해야 해.
 class UNetDecoder(nn.Module): # nn.Module class를 UNet에 상속한다.
     def __init__(
             self,
