@@ -6,13 +6,13 @@ class UNetEncoder(nn.Module): # nn.Module class를 UNet에 상속한다.
         super(UNetEncoder, self).__init__()
         
         self.in_channels = 1
-        self.out_channels = [1, 64, 64, 128, 128, 256, 256, 512, 512, 1024] ### 여기까지 수정. 2023.03.30
-        self.bilinear = bilinear ###
+        self.out_channels = [1, 64, 64, 128, 128, 256, 256, 512, 512, 1024] 
+        self.bilinear = bilinear 
         
         def CBR(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True):
             
             cbr = nn.Sequential(
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias), # bias
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias), 
                 nn.BatchNorm2d(num_features=out_channels),
                 nn.ReLU(inplace = True)
             )
@@ -70,18 +70,3 @@ class UNetEncoder(nn.Module): # nn.Module class를 UNet에 상속한다.
         features.append(x)
     
         return features # feature 전체를 return.
-
-'''  
-import os
-os.environ["CUDA_VISIBLE_DEVICES"]= "0"  # Set the GPU 0 to use
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-model = UNetEncoder(1, 1024, 2).to(device) # (in_channels, out_channels, n_classes)
-test_input = torch.rand(3, 1, 224, 224).to(device)
-print(test_input.shape)
-test_output = model.forward(test_input)
-print(test_output) # [3, 64, 224, 224] [3, 128, 112, 112] [3, 256, 56, 56] [3, 512, 28, 28] [3, 1024, 14, 14]
-test_output = test_output[-1] # 맨 마지막...
-print("hell0")
-'''

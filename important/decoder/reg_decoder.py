@@ -95,20 +95,15 @@ class CenterBlock(nn.Sequential):
 class AE_Decoder(nn.Module):
     def __init__(
             self,
-            encoder_channels, # [64, 128, 256, 512, 1024] --> encoder의 ouput
-            decoder_channels, # [1024, 512, 256, 128] --> decoder의 input
             use_batchnorm=False,
             attention_type=None,
             center=False,
     ):
         super().__init__()
-        encoder_channels = encoder_channels[1:]    # [128, 256, 512, 1024]
-        encoder_channels = encoder_channels[::-1]  # [1024, 512, 256, 128]
-
-        # computing blocks input and output channels
-        head_channels = encoder_channels[0] # 1024
-        in_channels   = [head_channels] + list(decoder_channels[:-1]) # [1024, 1024, 512, 256]
-        out_channels  = decoder_channels # [1024, 512, 256, 128]
+        
+        head_channels = 1024
+        in_channels   = [1024, 1024, 512, 256]
+        out_channels  = [1024, 512, 256, 128]
 
         if center:
             self.center = CenterBlock(head_channels, head_channels, use_batchnorm=use_batchnorm)

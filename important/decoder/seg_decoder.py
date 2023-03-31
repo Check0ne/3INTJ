@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..base import modules as md
+from important.base import modules as md
 
 class DecoderBlock(nn.Module):
     def __init__(
@@ -84,78 +84,17 @@ class CenterBlock(nn.Sequential):
         super().__init__(conv1, conv2)
 
 
-
-
-class Unet_Decoder(nn.Module):
-    def __init__(
-            self,
-            encoder_channels,
-            decoder_channels,
-            use_batchnorm=True,
-            attention_type=None,
-            center=False,
-    ):
-        super().__init__()
-
-
-        encoder_channels = encoder_channels[1:]    # remove first skip with same spatial resolution
-        encoder_channels = encoder_channels[::-1]  # reverse channels to start from head of encoder
-
-        # computing blocks input and output channels
-        head_channels = encoder_channels[0]
-        in_channels   = [head_channels] + list(decoder_channels[:-1])
-        skip_channels = list(encoder_channels[1:])
-        out_channels  = decoder_channels    # (256, 128, 64, 32)
-
-        if center:
-            self.center = CenterBlock(head_channels, head_channels, use_batchnorm=use_batchnorm)
-        else:
-            self.center = nn.Identity()
-
-        # combine decoder keyword arguments
-        kwargs = dict(use_batchnorm=use_batchnorm, attention_type=attention_type)
-        blocks = [ DecoderBlock(in_ch, skip_ch, out_ch, **kwargs) for in_ch, skip_ch, out_ch in zip(in_channels, skip_channels, out_channels) ]
-        self.blocks = nn.ModuleList(blocks)
-        self.last_block = Last_DecoderBlock(in_channels=32, out_channels=16, use_batchnorm=True, attention_type='scse')
-
-
-
-    def forward(self, *features):
-        features = features[1:]    # remove first skip with same spatial resolution
-        features = features[::-1]  # reverse channels to start from head of encoder
-
-        head  = features[0]
-        skips = features[1:]
-
-        x = self.center(head)
-
-        for i, decoder_block in enumerate(self.blocks):
-            skip = skips[i] 
-            x = decoder_block(x, skip)
-
-        x = self.last_block(x)
-
-        return x
-    
-    
-# 이것 수정해야 해.
 class UNetDecoder(nn.Module): # nn.Module class를 UNet에 상속한다.
     def __init__(
             self,
-            encoder_channels, # [1, 64, 64, 128, 128, 256, 256, 512, 512, 1024]
-            decoder_channels, # [1024, 512, 512, 256, 256, 128, 128, 64, 64]
             use_batchnorm=False,
             attention_type=None,
             center=False,
     ):
         super(UNetDecoder, self).__init__()
-        encoder_channels = encoder_channels[1:] # [64, 64, 128, 128, 256, 256, 512, 512, 1024]
-        encoder_channels = encoder_channels[::-1]  # [1024, 512, 512, 256, 256, 128, 128, 64, 64]
-        
-        # computing blocks input and output channels
-        head_channels = encoder_channels[0] # 1024
-        in_channels   = [head_channels] + list(decoder_channels[:-1]) # [1024, 1024, 512, 512, 256, 256, 128, 128, 64, 64]
-        out_channels  = decoder_channels # [1024, 512, 512, 256, 256, 128, 128, 64, 64]
+
+        self.in_channels   = [1024, 1024, 512, 512, 256, 256, 128, 128, 64, 64]
+        self.out_channels  = [1024, 512, 512, 256, 256, 128, 128, 64, 64, 1]
         
         
         def CBR(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True):
@@ -169,29 +108,29 @@ class UNetDecoder(nn.Module): # nn.Module class를 UNet에 상속한다.
             return cbr
         
         # Expansive path
-        self.dec5_1 = CBR(in_channels=in_channels[0], out_channels=out_channels[0]) # channel
+        self.dec5_1 = CBR(in_channels=self.in_channels[0], out_channels=self.out_channels[0]) # channel
 
-        self.unpool4 = nn.ConvTranspose2d(in_channels=out_channels[0], out_channels=in_channels[2], kernel_size=2, stride=2, padding=0, bias=True)
+        self.unpool4 = nn.ConvTranspose2d(in_channels=self.out_channels[0], out_channels=self.in_channels[2], kernel_size=2, stride=2, padding=0, bias=True)
+        
+        self.dec4_2 = CBR(in_channels=self.in_channels[1], out_channels=self.out_channels[1])
+        self.dec4_1 = CBR(in_channels=self.in_channels[2], out_channels=self.out_channels[2])
 
-        self.dec4_2 = CBR(in_channels=in_channels[1], out_channels=out_channels[1])
-        self.dec4_1 = CBR(in_channels=in_channels[2], out_channels=out_channels[2])
+        self.unpool3 = nn.ConvTranspose2d(in_channels=self.out_channels[2], out_channels=self.in_channels[4], kernel_size=2, stride=2, padding=0, bias=True)
 
-        self.unpool3 = nn.ConvTranspose2d(in_channels=out_channels[2], out_channels=in_channels[4], kernel_size=2, stride=2, padding=0, bias=True)
+        self.dec3_2 = CBR(in_channels=self.in_channels[3], out_channels=self.out_channels[3])
+        self.dec3_1 = CBR(in_channels=self.in_channels[4], out_channels=self.out_channels[4])
 
-        self.dec3_2 = CBR(in_channels=in_channels[3], out_channels=out_channels[3])
-        self.dec3_1 = CBR(in_channels=in_channels[4], out_channels=out_channels[4])
+        self.unpool2 = nn.ConvTranspose2d(in_channels=self.out_channels[4], out_channels=self.in_channels[6], kernel_size=2, stride=2, padding=0, bias=True)
 
-        self.unpool2 = nn.ConvTranspose2d(in_channels=out_channels[4], out_channels=in_channels[6], kernel_size=2, stride=2, padding=0, bias=True)
+        self.dec2_2 = CBR(in_channels=self.in_channels[5], out_channels=self.out_channels[5])
+        self.dec2_1 = CBR(in_channels=self.in_channels[6], out_channels=self.out_channels[6])
 
-        self.dec2_2 = CBR(in_channels=in_channels[5], out_channels=out_channels[5])
-        self.dec2_1 = CBR(in_channels=in_channels[6], out_channels=out_channels[6])
+        self.unpool1 = nn.ConvTranspose2d(in_channels=self.out_channels[6], out_channels=self.in_channels[8], kernel_size=2, stride=2, padding=0, bias=True)
 
-        self.unpool1 = nn.ConvTranspose2d(in_channels=out_channels[6], out_channels=in_channels[8], kernel_size=2, stride=2, padding=0, bias=True)
+        self.dec1_2 = CBR(in_channels=self.in_channels[7], out_channels=self.out_channels[7])
+        self.dec1_1 = CBR(in_channels=self.in_channels[8], out_channels=self.out_channels[8])
 
-        self.dec1_2 = CBR(in_channels=in_channels[7], out_channels=out_channels[7])
-        self.dec1_1 = CBR(in_channels=in_channels[8], out_channels=out_channels[8])
-
-        #self.fc = nn.Conv2d(in_channels=in_channels[9], out_channels=out_channels[9], kernel_size=1, stride=1, padding=0, bias=True)
+        self.fc = nn.Conv2d(in_channels=self.in_channels[9], out_channels=self.out_channels[9], kernel_size=1, stride=1, padding=0, bias=True)
         
     def forward(self, *features):
         
@@ -222,6 +161,6 @@ class UNetDecoder(nn.Module): # nn.Module class를 UNet에 상속한다.
         dec1_2 = self.dec1_2(cat1)
         dec1_1 = self.dec1_1(dec1_2)
         
-        x = dec1_1
+        x = self.fc(dec1_1)
         
         return x

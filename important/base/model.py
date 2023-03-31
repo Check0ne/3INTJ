@@ -21,8 +21,9 @@ class Multi_Task_Model(torch.nn.Module):
         labels = self.classification_head(feature_list[-1])
 
         # Seg
-        seg_decoder_output = self.seg_decoder(*feature_list)
-        masks = self.segmentation_head(seg_decoder_output)
+        masks = self.seg_decoder(*feature_list) # 일단은 head 사용 안 함.
+        #seg_decoder_output = self.seg_decoder(*feature_list)
+        #masks = self.segmentation_head(seg_decoder_output)
 
         # Rec
         rec_decoder_output = self.rec_decoder(feature_list[-1])
