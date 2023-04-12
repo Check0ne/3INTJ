@@ -1,4 +1,3 @@
-#%%
 import torch
 import torch.nn.functional as F
 import os
@@ -9,8 +8,13 @@ from PIL import Image
 from glob import glob
 from model import *
 
+from engine import *
+from losses import Uptask_Loss, Downtask_Loss
+from optimizers import create_optim
+from lr_schedulers import create_scheduler
+
 # data load
-data_dir = '/workspace/3INTJ/Dataset_BUSI/Dataset_BUSI_with_GT'
+data_dir = '/workspace/Dataset_BUSI/Dataset_BUSI_with_GT'
 
 class_names = ['benign', 'malignant']
 #class_names = ['benign', 'malignant', 'normal']
@@ -148,18 +152,18 @@ ds = ArrayDataset(images, train_imtrans)
 print(type(ds))
 print(ds[0].shape) # channel이 맨 앞에 있는 tensor로 변환.
 
-val_imtrans = Compose([AsChannelFirst(), Resize((resize_h,resize_w), mode='area'), ScaleIntensity()])
+val_imtrans = Compose([AsChannelFirst(), Resize((resize_h, resize_w), mode='area'), ScaleIntensity()])
 val_segtrans = Compose([AsChannelFirst(), ScaleIntensity()]) #  validation에서는 crop, rotate를 하지 않는다. --> Check
 
-test_imtrans = Compose([AsChannelFirst(), Resize((resize_h,resize_w), mode='area'), ScaleIntensity()])
+test_imtrans = Compose([AsChannelFirst(), Resize((resize_h, resize_w), mode='area'), ScaleIntensity()])
 test_orgtrans = Compose([AsChannelFirst(), ScaleIntensity()])
 test_segtrans = Compose([AsChannelFirst(), ScaleIntensity()]) #  test에서는 crop, rotate를 하지 않는다. --> Check
 
 # define array dataset, data loader
-check_ds = ArrayDataset(images, train_imtrans, new_segs, train_segtrans) 
+check_ds = ArrayDataset(images, train_imtrans, new_segs, train_segtrans, image_class, train_clstrans) 
 check_loader = DataLoader(check_ds, batch_size=10, num_workers=2, pin_memory=torch.cuda.is_available())
-im, seg = monai.utils.misc.first(check_loader)
-print(im.shape, seg.shape)
+im, seg, cls = monai.utils.misc.first(check_loader)
+print(im.shape, seg.shape, cls.shape)
 
 # shuffle
 length = len(images)
@@ -167,9 +171,7 @@ indices = np.arange(length)
 np.random.shuffle(indices)
 images = [images[i] for i in indices] # shuffled list
 new_segs = [new_segs[i] for i in indices] # shuffled list
-image_class = [image_class[i] for i in indices]
-
-#k = train_clstrans(image_class) # 0 --> [1, 0], 1 --> [1, 0]
+image_class = [image_class[i] for i in indices] # shuffeld list, benign --> 0, malignant --> 1
 
 val_frac = 0.15
 test_frac = 0.15
@@ -177,21 +179,24 @@ test_split = int(test_frac * length)
 val_split = int(val_frac * length) + test_split
 
 # create a training data loader 
-train_ds = ArrayDataset(images[val_split:], train_imtrans, new_segs[val_split:], train_segtrans)
+train_ds = ArrayDataset(images[val_split:], train_imtrans, new_segs[val_split:], train_segtrans, image_class[val_split:], train_clstrans)
 train_loader = DataLoader(train_ds, batch_size=3, shuffle=True, num_workers=8, pin_memory=torch.cuda.is_available())
+
 # create a validation data loader
-val_ds = ArrayDataset(images[test_split:val_split], val_imtrans, new_segs[test_split:val_split], val_segtrans)
+val_ds = ArrayDataset(images[test_split:val_split], val_imtrans, new_segs[test_split:val_split], val_segtrans, image_class[test_split:val_split], train_clstrans)
 val_loader = DataLoader(val_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
+
 # create a test data loader
-test_ds = ArrayDataset(images[:test_split], test_imtrans, new_segs[:test_split], test_segtrans, images[:test_split], test_orgtrans)
+test_ds = ArrayDataset(images[:test_split], test_imtrans, new_segs[:test_split], image_class[:test_split], train_clstrans)
 test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 
 print(f"Training count: {len(train_ds)}, Validation count: {len(val_ds)}, Test count: {len(test_ds)}")
 
-dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False, ignore_empty=False) ############# ignore_empty option!!!! normal case를 위해서 꼭 필요하다.
+dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False, ignore_empty=False) # ignore_empty option!!!! normal case를 위해서 꼭 필요하다.
 post_trans = Compose([Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
 saver = SaveImage(output_dir="./output", output_ext=".png", output_postfix="seg")
-# create UNet, DiceLoss and Adam optimizer
+
+# create Network, DiceLoss and Adam optimizer
 os.environ["CUDA_VISIBLE_DEVICES"]= "0"  # Set the GPU 0 to use
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -199,136 +204,45 @@ print('Device:', device)
 print('Current cuda device:', torch.cuda.current_device())
 print('Count of using GPUs:', torch.cuda.device_count())
 
-print(len(train_ds)) ##test
+print(len(train_ds)) #test
 
-model = UNet(1, 1, 2).to(device)
-#print(model)
-'''
-model = monai.networks.nets.UNet(
-    spatial_dims=2, 
-    in_channels=1,
-    out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
-).to(device)
-'''
 
-loss_function = monai.losses.DiceLoss(sigmoid=True)
-optimizer = torch.optim.Adam(model.parameters(), 1e-3)
 
-# start a typical PyTorch training
-val_interval = 2
-best_metric = -1
-best_metric_epoch = -1
-epoch_loss_values = list()
-metric_values = list()
-writer = SummaryWriter()
+# Select Model
+model = Up_SMART_Net().to(device)
+model_name = 'Up_SMART_Net'
 
-print(len(train_ds))
+# Select Loss
+training_stream = 'Upstream'
+if training_stream == 'Upstream':
+        criterion = Uptask_Loss(name=model_name)
+else :
+    criterion = Downtask_Loss(name=model_name)
 
-num_epoch = 100
+# Optimizer & LR Scheduler
+optimizer_name = 'adam'
+lr_scheduler_name = 'poly_lr'
+optimizer = create_optim(name=optimizer_name, model=model)
+#lr_scheduler = create_scheduler(name=lr_scheduler_name, optimizer=optimizer)
 
-for epoch in range(num_epoch):
-    print("-" * num_epoch)
-    print(f"epoch {epoch + 1}/{num_epoch}")
-    model.train()
-    epoch_loss = 0
-    step = 0
-    for batch_data in train_loader:
-        step += 1
-        inputs, labels = batch_data[0].to(device), batch_data[1].to(device)
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = loss_function(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        epoch_loss += loss.item()
-        epoch_len = len(train_ds) // train_loader.batch_size
-        print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
-        writer.add_scalar("train_loss", loss.item(), epoch_len * epoch + step)
-    epoch_loss /= step
-    epoch_loss_values.append(epoch_loss)
-    print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
-    if (epoch + 1) % val_interval == 0:
-        model.eval()
-        with torch.no_grad():
-            val_images = None
-            val_labels = None
-            val_outputs = None
-            for val_data in val_loader:
-                val_images, val_labels = val_data[0].to(device), val_data[1].to(device)
-                roi_size = (resize_h,resize_w)
-                sw_batch_size = 4
-                val_outputs = sliding_window_inference(val_images, roi_size, sw_batch_size, model)
-                
-                original_h = val_labels.shape[2]
-                original_w = val_labels.shape[3]
-                val_outputs = F.interpolate(val_outputs, size=(original_h, original_w), mode='bilinear', align_corners=False)
-                
-                val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
-                # compute metric for current iteration
-                dice_metric(y_pred=val_outputs, y=val_labels)
-                
-            # aggregate the final mean dice result
-            metric = dice_metric.aggregate().item()
-            # reset the status for next validation round
-            dice_metric.reset()
-            metric_values.append(metric)
-            if metric > best_metric:
-                best_metric = metric
-                best_metric_epoch = epoch + 1
-                torch.save(model.state_dict(), "best_metric_model_segmentation2d_array.pth")
-                print("saved new best metric model")
-            print(
-                "current epoch: {} current mean dice: {:.4f} best mean dice: {:.4f} at epoch {}".format(
-                    epoch + 1, metric, best_metric, best_metric_epoch
-                )
-            )
-            writer.add_scalar("val_mean_dice", metric, epoch + 1)
-            # plot the last model output as GIF image in TensorBoard with the corresponding image and label
-            plot_2d_or_3d_image(val_images, epoch + 1, writer, index=0, tag="image")
-            plot_2d_or_3d_image(val_labels, epoch + 1, writer, index=0, tag="label")
-            plot_2d_or_3d_image(val_outputs, epoch + 1, writer, index=0, tag="output")
-print(f"train completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}")
-writer.close()
-#%%
-#test
-import torchvision.transforms as T
-model.load_state_dict(torch.load("best_metric_model_segmentation2d_array.pth"))
-transform = T.ToPILImage()
-model.eval()
-with torch.no_grad():
+start_epoch = 1
+epochs = 2
+batch_size = 3
+print_freq = 10
+
+data_loader_train = train_loader
+data_loader_valid = val_loader
+
+# Whole LOOP
+for epoch in range(start_epoch, epochs): # 1~10
+    # Train & Valid
+    if training_stream == 'Upstream':
+        if model_name == 'Up_SMART_Net':
+            train_stats = train_Up_SMART_Net(model, criterion, data_loader_train, optimizer, device, epoch, print_freq, batch_size)
+            print("Averaged train_stats: ", train_stats)
+            valid_stats = valid_Up_SMART_Net(model, criterion, data_loader_valid, device, print_freq, batch_size)
+            print("Averaged valid_stats: ", valid_stats)
+
     
-    metric = 0
-    for test_data in test_loader:
-        test_images, test_labels, test_org = test_data[0].to(device), test_data[1].to(device), test_data[2].to(device)
-        # define sliding window size and batch size for windows inference
-        roi_size = (resize_h,resize_w)
-        sw_batch_size = 4
-        test_outputs = sliding_window_inference(test_images, roi_size, sw_batch_size, model)
-        
-        original_h = test_labels.shape[2]
-        original_w = test_labels.shape[3]
-        test_outputs = F.interpolate(test_outputs, size=(original_h, original_w), mode='bilinear', align_corners=False)
-        
-        test_outputs = [post_trans(i) for i in decollate_batch(test_outputs)]
-        test_labels = decollate_batch(test_labels)
-        # compute metric for current iteration
-        dice_score = dice_metric(y_pred=test_outputs, y=test_labels)
-        
-        #saveimg = transform(test_org[0])
-        #saveimg.save(f"{dice_score.item()}input.png")
-        #saveimg = transform(test_outputs[0])
-        #saveimg.save(f"{dice_score.item()}output.png")
-        #arr = test_labels[0].cpu().numpy().astype('float32')
-        #arr = (arr*255).astype('uint8')
-        #saveimg = PIL.Image.fromarray(arr[0].squeeze(), mode = 'L')
-        #saveimg.save(f"{dice_score.item()}label.png")
-        
-    # aggregate the final mean dice result
-    metric = dice_metric.aggregate().item()
-    print("evaluation metric:", metric)
-    # reset the status
-    dice_metric.reset()
-#%%
+    else :
+        raise KeyError("Wrong training stream `{}`".format(training_stream))
