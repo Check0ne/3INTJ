@@ -31,7 +31,7 @@ class Up_SMART_Net(Multi_Task_Model):
             in_channels=1024, 
             pooling='avg', 
             dropout=0.5,
-            out_channels=2, 
+            out_channels=1, 
         )
 
         # SEG
@@ -55,6 +55,8 @@ class Up_SMART_Net(Multi_Task_Model):
         self.name = "SMART-Net-{}".format(encoder_name)
         self.initialize()
 
+
+'''
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]= "0"  # Set the GPU 0 to use
 
@@ -67,6 +69,8 @@ test_output = model.forward(test_input)
 print(test_output[0].shape)
 print(test_output[1].shape)
 print(test_output[2].shape)
+
+'''
 
 
 

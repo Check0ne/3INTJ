@@ -49,7 +49,7 @@ for i in range(num_class):
     image_files_list.extend(image_files[i]) # image_files[i] 리스트의 요소(image)를 image_files_list에 추가
     seg_files_list.extend(seg_files[i])
     new_seg_files_list.extend(new_seg_files[i])
-    image_class.extend([i] * num_each[i]) # class 이름 리스트 생성 [A, A, A, ... B, B, B, ... C, C, C ...] class 요소의 개수는 num_each 
+    image_class.extend([np.array(i)] * num_each[i]) # class 이름 리스트 생성 [A, A, A, ... B, B, B, ... C, C, C ...] class 요소의 개수는 num_each 
 num_total = len(image_class) # image_class의 요소 개수
 image_width, image_height = Image.open(image_files_list[0]).size # 하나의 이미지 열어서 width, height 값 추출
 
@@ -119,6 +119,7 @@ from monai.transforms import (
     AddChannel,
     SaveImage,
     Resize,
+    Lambda,
 )
 from monai.visualize import plot_2d_or_3d_image
 from torch.utils.tensorboard import SummaryWriter
@@ -145,7 +146,15 @@ train_segtrans = Compose(
     ]
 )
 
-train_clstrans = Compose([AsDiscrete(to_onehot=num_class)])
+
+def int_to_tensor(x):
+    return torch.tensor(x, dtype=float).reshape((1,))
+
+
+train_clstrans = Compose([
+    Lambda(int_to_tensor)
+])
+
 
 print(images[0].shape)
 ds = ArrayDataset(images, train_imtrans) 
@@ -153,7 +162,7 @@ print(type(ds))
 print(ds[0].shape) # channel이 맨 앞에 있는 tensor로 변환.
 
 val_imtrans = Compose([AsChannelFirst(), Resize((resize_h, resize_w), mode='area'), ScaleIntensity()])
-val_segtrans = Compose([AsChannelFirst(), ScaleIntensity()]) #  validation에서는 crop, rotate를 하지 않는다. --> Check
+val_segtrans = Compose([AsChannelFirst(), Resize((resize_h, resize_w), mode='area'), ScaleIntensity()]) #  validation에서는 crop, rotate를 하지 않는다. --> Check
 
 test_imtrans = Compose([AsChannelFirst(), Resize((resize_h, resize_w), mode='area'), ScaleIntensity()])
 test_orgtrans = Compose([AsChannelFirst(), ScaleIntensity()])
@@ -226,9 +235,9 @@ optimizer = create_optim(name=optimizer_name, model=model)
 #lr_scheduler = create_scheduler(name=lr_scheduler_name, optimizer=optimizer)
 
 start_epoch = 1
-epochs = 2
+epochs = 101
 batch_size = 3
-print_freq = 10
+print_freq = 50
 
 data_loader_train = train_loader
 data_loader_valid = val_loader

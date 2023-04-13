@@ -69,7 +69,7 @@ def train_Up_SMART_Net(model, criterion, data_loader, optimizer, device, epoch, 
         
         inputs  = batch_data[0].to(device)      # (B, C, H, W)
         seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
-        cls_gt  = batch_data[2].to(device)      # (B, 2) 
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
 
         cls_pred, seg_pred, rec_pred = model(inputs)
 
@@ -104,7 +104,7 @@ def valid_Up_SMART_Net(model, criterion, data_loader, device, print_freq, batch_
         
         inputs  = batch_data[0].to(device)      # (B, C, H, W)
         seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
-        cls_gt  = batch_data[2].to(device)      # (B, 2) 
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
 
         cls_pred, seg_pred, rec_pred = model(inputs)
 
