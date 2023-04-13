@@ -93,6 +93,12 @@ for i in range(len(segs)):
 print(len(new_segs)) # 780
 
 
+images = images[227:] # for downsampling
+new_segs= new_segs[227:] # for downsampling
+image_class = image_class[227:] # for downsampling
+print(f"Case counts after down sampling: {len(images)}")
+
+
 m = 2
 print(new_seg_files_list[m])
 plt.imshow(new_segs[m]*255, cmap = "gray", vmin=0, vmax=255)
@@ -151,7 +157,7 @@ def int_to_tensor(x):
     return torch.tensor(x, dtype=float).reshape((1,))
 
 
-train_clstrans = Compose([
+clstrans = Compose([
     Lambda(int_to_tensor)
 ])
 
@@ -169,35 +175,65 @@ test_orgtrans = Compose([AsChannelFirst(), ScaleIntensity()])
 test_segtrans = Compose([AsChannelFirst(), ScaleIntensity()]) #  test에서는 crop, rotate를 하지 않는다. --> Check
 
 # define array dataset, data loader
-check_ds = ArrayDataset(images, train_imtrans, new_segs, train_segtrans, image_class, train_clstrans) 
+check_ds = ArrayDataset(images, train_imtrans, new_segs, train_segtrans, image_class, clstrans) 
 check_loader = DataLoader(check_ds, batch_size=10, num_workers=2, pin_memory=torch.cuda.is_available())
 im, seg, cls = monai.utils.misc.first(check_loader)
 print(im.shape, seg.shape, cls.shape)
 
-# shuffle
-length = len(images)
+'''
+
+'''
+
+images_b = images[:210] # for downsampling
+images_m = images[210:] # for downsampling
+new_segs_b = new_segs[:210] # for downsampling
+new_segs_m = new_segs[210:] # for downsampling
+image_class_b = image_class[:210] # for downsampling
+image_class_m = image_class[210:] # for downsampling
+
+length = int(len(images)*0.5)
+
+# shuffle benign
 indices = np.arange(length)
 np.random.shuffle(indices)
-images = [images[i] for i in indices] # shuffled list
-new_segs = [new_segs[i] for i in indices] # shuffled list
-image_class = [image_class[i] for i in indices] # shuffeld list, benign --> 0, malignant --> 1
+images_b = [images_b[i] for i in indices] # shuffled list
+new_segs_b = [new_segs_b[i] for i in indices] # shuffled list
+image_class_b = [image_class_b[i] for i in indices] # shuffeld list
 
-val_frac = 0.15
-test_frac = 0.15
+# shuffle malignant
+np.random.shuffle(indices)
+images_m = [images_m[i] for i in indices] # shuffled list
+new_segs_m = [new_segs_m[i] for i in indices] # shuffled list
+image_class_m = [image_class_m[i] for i in indices] # shuffeld list
+
+val_frac = 0.1
+test_frac = 0.1
 test_split = int(test_frac * length)
 val_split = int(val_frac * length) + test_split
 
+train_images = images_b[val_split:] + images_m[val_split:]
+val_images = images_b[test_split:val_split] + images_m[test_split:val_split]
+test_images = images_b[:test_split] + images_m[:test_split]
+
+train_new_segs = new_segs_b[val_split:] + new_segs_m[val_split:]
+val_new_segs = new_segs_b[test_split:val_split] + new_segs_m[test_split:val_split]
+test_new_segs = new_segs_b[:test_split] + new_segs_m[:test_split]
+
+train_image_class = image_class_b[val_split:] + image_class_m[val_split:]
+val_image_class = image_class_b[test_split:val_split] + image_class_m[test_split:val_split]
+test_image_class = image_class_b[:test_split] + image_class_m[:test_split]
+
 # create a training data loader 
-train_ds = ArrayDataset(images[val_split:], train_imtrans, new_segs[val_split:], train_segtrans, image_class[val_split:], train_clstrans)
-train_loader = DataLoader(train_ds, batch_size=3, shuffle=True, num_workers=8, pin_memory=torch.cuda.is_available())
+train_ds = ArrayDataset(train_images, train_imtrans, train_new_segs, train_segtrans, train_image_class, clstrans)
+train_loader = DataLoader(train_ds, batch_size=4, shuffle=True, num_workers=8, pin_memory=torch.cuda.is_available())
 
 # create a validation data loader
-val_ds = ArrayDataset(images[test_split:val_split], val_imtrans, new_segs[test_split:val_split], val_segtrans, image_class[test_split:val_split], train_clstrans)
-val_loader = DataLoader(val_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
+val_ds = ArrayDataset(val_images, val_imtrans, val_new_segs, val_segtrans, val_image_class, clstrans)
+val_loader = DataLoader(val_ds, batch_size=4, shuffle=True, num_workers=4, pin_memory=torch.cuda.is_available())
 
 # create a test data loader
-test_ds = ArrayDataset(images[:test_split], test_imtrans, new_segs[:test_split], image_class[:test_split], train_clstrans)
-test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
+test_ds = ArrayDataset(test_images, test_imtrans, test_new_segs, test_segtrans, test_image_class, clstrans)
+test_loader = DataLoader(test_ds, batch_size=4, shuffle=True, num_workers=4, pin_memory=torch.cuda.is_available())
 
 print(f"Training count: {len(train_ds)}, Validation count: {len(val_ds)}, Test count: {len(test_ds)}")
 
@@ -236,8 +272,8 @@ optimizer = create_optim(name=optimizer_name, model=model)
 
 start_epoch = 1
 epochs = 101
-batch_size = 3
-print_freq = 50
+batch_size = 4
+print_freq = 21
 
 data_loader_train = train_loader
 data_loader_valid = val_loader
