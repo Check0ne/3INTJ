@@ -4,6 +4,9 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import PIL
+import json
+import time
+import datetime
 from PIL import Image
 from glob import glob
 from model import *
@@ -253,12 +256,14 @@ print(len(train_ds)) #test
 
 
 
+training_stream = input("Training Stream: ")
+
+
 # Select Model
 model = Up_SMART_Net().to(device)
 model_name = 'Up_SMART_Net'
 
 # Select Loss
-training_stream = 'Upstream'
 if training_stream == 'Upstream':
         criterion = Uptask_Loss(name=model_name)
 else :
@@ -268,18 +273,54 @@ else :
 optimizer_name = 'adam'
 lr_scheduler_name = 'poly_lr'
 optimizer = create_optim(name=optimizer_name, model=model)
-#lr_scheduler = create_scheduler(name=lr_scheduler_name, optimizer=optimizer)
+#lr_scheduler = create_scheduler(name=lr_scheduler_name, optimizer=optimizer) 인자 설정...
 
-start_epoch = 1
-epochs = 101
+
+start_epoch = 1 ## 앞으로 옮김
+
+resume = input("Resume(T/F): ")
+if resume == 'T':
+    resume = input("Model dir: ")
+    checkpoint = torch.load(resume, map_location='cpu')
+    model.load_state_dict(checkpoint['model_state_dict'])        
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    #lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])        
+    start_epoch = checkpoint['epoch'] + 1  
+    try:
+        log_path = os.path.dirname(resume)+'/log.txt'
+        lines    = open(log_path,'r').readlines()
+        val_loss_list = []
+        for l in lines:
+            exec('log_dict='+l.replace('NaN', '0'))
+            val_loss_list.append(log_dict['valid_loss'])
+        print("Epoch: ", np.argmin(val_loss_list), " Minimum Val Loss ==> ", np.min(val_loss_list))
+    except:
+        pass
+
+    # Optimizer Error fix...!
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            if torch.is_tensor(v):
+                state[k] = v.cuda()
+
+epochs = 1 ## 수정이 필요하다
 batch_size = 4
 print_freq = 21
 
 data_loader_train = train_loader
 data_loader_valid = val_loader
 
+output_dir = '/workspace/trained_model'
+
+
+# Multi GPU
+multi_gpu_mode = 'Single'
+
+print(f"Start training for {epochs} epochs")
+start_time = time.time()
+
 # Whole LOOP
-for epoch in range(start_epoch, epochs): # 1~10
+for epoch in range(start_epoch, epochs+1): # 1~10, +1 아닌가
     # Train & Valid
     if training_stream == 'Upstream':
         if model_name == 'Up_SMART_Net':
@@ -291,3 +332,29 @@ for epoch in range(start_epoch, epochs): # 1~10
     
     else :
         raise KeyError("Wrong training stream `{}`".format(training_stream))
+
+
+# Save & Prediction png
+    checkpoint_paths = output_dir + '/epoch_' + str(epoch) + '_checkpoint.pth'
+    torch.save({
+        'model_state_dict': model.state_dict() if multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
+        'optimizer': optimizer.state_dict(),
+        #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
+        'epoch': epoch,
+        #'args': args,
+    }, checkpoint_paths)
+
+    log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                **{f'valid_{k}': v for k, v in valid_stats.items()},
+                'epoch': epoch}
+    
+    if output_dir:
+        with open(output_dir + "/log.txt", "a") as f:
+            f.write(json.dumps(log_stats) + "\n")
+
+    #lr_scheduler.step(epoch)
+
+# Finish
+total_time = time.time() - start_time
+total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+print('Training time {}'.format(total_time_str))
