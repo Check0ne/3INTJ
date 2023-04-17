@@ -258,7 +258,6 @@ print(len(train_ds)) #test
 
 training_stream = input("Training Stream: ")
 
-
 # Select Model
 model = Up_SMART_Net().to(device)
 model_name = 'Up_SMART_Net'
@@ -275,12 +274,11 @@ lr_scheduler_name = 'poly_lr'
 optimizer = create_optim(name=optimizer_name, model=model)
 #lr_scheduler = create_scheduler(name=lr_scheduler_name, optimizer=optimizer) 인자 설정...
 
-
-start_epoch = 1 ## 앞으로 옮김
-
 resume = input("Resume(T/F): ")
 if resume == 'T':
     resume = input("Model dir: ")
+    epochs = input("Epochs: ")
+    epochs = int(epochs)
     checkpoint = torch.load(resume, map_location='cpu')
     model.load_state_dict(checkpoint['model_state_dict'])        
     optimizer.load_state_dict(checkpoint['optimizer'])
@@ -302,8 +300,11 @@ if resume == 'T':
         for k, v in state.items():
             if torch.is_tensor(v):
                 state[k] = v.cuda()
+else:
+    start_epoch = 0
+    epochs = input("Epochs: ")
+    epochs = int(epochs)
 
-epochs = 1 ## 수정이 필요하다
 batch_size = 4
 print_freq = 21
 
@@ -320,7 +321,7 @@ print(f"Start training for {epochs} epochs")
 start_time = time.time()
 
 # Whole LOOP
-for epoch in range(start_epoch, epochs+1): # 1~10, +1 아닌가
+for epoch in range(start_epoch, epochs): 
     # Train & Valid
     if training_stream == 'Upstream':
         if model_name == 'Up_SMART_Net':
