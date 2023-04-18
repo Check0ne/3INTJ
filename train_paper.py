@@ -274,7 +274,7 @@ lr_scheduler_name = 'poly_lr'
 optimizer = create_optim(name=optimizer_name, model=model)
 #lr_scheduler = create_scheduler(name=lr_scheduler_name, optimizer=optimizer) 인자 설정...
 
-resume = input("Resume(T/F): ")
+resume = input("Resume(T/F): ") # resume은 있는 파일에서 그대로 이어서.. downstream하려면 pre trained로 weight 불러와서 모델에 넣어야 할 듯...?
 if resume == 'T':
     resume = input("Model dir: ")
     epochs = input("Epochs: ")
@@ -304,6 +304,26 @@ else:
     start_epoch = 0
     epochs = input("Epochs: ")
     epochs = int(epochs)
+
+pt = input("Pre trained(T/F): ")
+from_pretrained = input("Pre trained dir: ")
+load_weight_type = input("Encoder type: ")
+
+# Using the pre-trained feature extract's weights
+if pt == 'T':
+    print("Loading... Pre-trained")      
+    model_dict = model.state_dict() 
+    print("Check Before weight = ", model_dict['encoder.conv1.weight'].std().item())
+    checkpoint = torch.load(from_pretrained, map_location='cpu')
+    if load_weight_type  == 'full':
+        model.load_state_dict(checkpoint['model_state_dict'])   
+    elif load_weight_type  == 'encoder':
+        filtered_dict = {k: v for k, v in checkpoint['model_state_dict'].items() if (k in model_dict) and ('encoder.' in k)}
+        model_dict.update(filtered_dict)             
+        model.load_state_dict(model_dict)   
+    print("Check After weight  = ", model.state_dict()['encoder.conv1.weight'].std().item())
+
+
 
 batch_size = 4
 print_freq = 21
