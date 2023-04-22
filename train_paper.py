@@ -259,8 +259,13 @@ print(len(train_ds)) #test
 training_stream = input("Training Stream: ")
 
 # Select Model
-model = Up_SMART_Net().to(device)
-model_name = 'Up_SMART_Net'
+model_name = input("Model(Up_SMART_Net/Down_SMART_Net_CLS/Down_SMART_Net_SEG): ")
+if model_name == 'Up_SMART_Net':
+    model = Up_SMART_Net().to(device)
+elif model_name == 'Down_SMART_Net_CLS':
+    model = Down_SMART_Net_CLS().to(device)
+else:
+    model = Down_SMART_Net_SEG().to(device)
 
 # Select Loss
 if training_stream == 'Upstream':
@@ -273,6 +278,9 @@ optimizer_name = 'adam'
 lr_scheduler_name = 'poly_lr'
 optimizer = create_optim(name=optimizer_name, model=model)
 #lr_scheduler = create_scheduler(name=lr_scheduler_name, optimizer=optimizer) 인자 설정...
+
+
+start_epoch = 0
 
 resume = input("Resume(T/F): ") # resume은 있는 파일에서 그대로 이어서.. downstream하려면 pre trained로 weight 불러와서 모델에 넣어야 할 듯...?
 if resume == 'T':
@@ -300,20 +308,16 @@ if resume == 'T':
         for k, v in state.items():
             if torch.is_tensor(v):
                 state[k] = v.cuda()
-else:
-    start_epoch = 0
-    epochs = input("Epochs: ")
-    epochs = int(epochs)
 
 pt = input("Pre trained(T/F): ")
 from_pretrained = input("Pre trained dir: ")
-load_weight_type = input("Encoder type: ")
+load_weight_type = input("Encoder type(full/encoder): ")
 
 # Using the pre-trained feature extract's weights
 if pt == 'T':
     print("Loading... Pre-trained")      
     model_dict = model.state_dict() 
-    print("Check Before weight = ", model_dict['encoder.conv1.weight'].std().item())
+    print("Check Before weight = ", model_dict['encoder.enc1_1.0.weight'].std().item())
     checkpoint = torch.load(from_pretrained, map_location='cpu')
     if load_weight_type  == 'full':
         model.load_state_dict(checkpoint['model_state_dict'])   
@@ -321,7 +325,7 @@ if pt == 'T':
         filtered_dict = {k: v for k, v in checkpoint['model_state_dict'].items() if (k in model_dict) and ('encoder.' in k)}
         model_dict.update(filtered_dict)             
         model.load_state_dict(model_dict)   
-    print("Check After weight  = ", model.state_dict()['encoder.conv1.weight'].std().item())
+    print("Check After weight  = ", model.state_dict()['encoder.enc1_1.0.weight'].std().item())
 
 
 
@@ -337,6 +341,11 @@ output_dir = '/workspace/trained_model'
 # Multi GPU
 multi_gpu_mode = 'Single'
 
+# Option
+gradual_unfreeze = True
+
+epochs = input("Epochs: ")
+epochs = int(epochs)
 print(f"Start training for {epochs} epochs")
 start_time = time.time()
 
@@ -349,8 +358,18 @@ for epoch in range(start_epoch, epochs):
             print("Averaged train_stats: ", train_stats)
             valid_stats = valid_Up_SMART_Net(model, criterion, data_loader_valid, device, print_freq, batch_size)
             print("Averaged valid_stats: ", valid_stats)
-
-    
+    elif training_stream == 'Downstream':
+        if model_name == 'Down_SMART_Net_CLS':
+            train_stats = train_Down_SMART_Net_CLS(model, criterion, data_loader_train, optimizer, device, epoch, print_freq, batch_size, gradual_unfreeze)
+            print("Averaged train_stats: ", train_stats)
+            valid_stats = valid_Down_SMART_Net_CLS(model, criterion, data_loader_valid, device, print_freq, batch_size)
+            print("Averaged valid_stats: ", valid_stats)
+        elif model_name == 'Down_SMART_Net_SEG':
+            train_stats = train_Down_SMART_Net_SEG(model, criterion, data_loader_train, optimizer, device, epoch, print_freq, batch_size, gradual_unfreeze)
+            print("Averaged train_stats: ", train_stats)
+            valid_stats = valid_Down_SMART_Net_SEG(model, criterion, data_loader_valid, device, print_freq, batch_size)
+            print("Averaged valid_stats: ", valid_stats)
+        
     else :
         raise KeyError("Wrong training stream `{}`".format(training_stream))
 
