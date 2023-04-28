@@ -302,11 +302,14 @@ def train_Down_SMART_Net_CLS(model, criterion, data_loader, optimizer, device, e
 
     for batch_data in metric_logger.log_every(data_loader, print_freq, header):
         
-        inputs  = batch_data["image"].to(device)                                                        # (B, C, H, W, D)
-        cls_gt  = batch_data["label"].flatten(1).bool().any(dim=1, keepdim=True).float().to(device)     #  ---> (B, 1)
-        depths  = batch_data["depths"]                                                                  #  ---> (B, 1) Fix bug, change cpu()
+        
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
+        
+        #depths  = batch_data["depths"]                                                                  #  ---> (B, 1) Fix bug, change cpu()
 
-        cls_pred = model(inputs, depths)
+        #cls_pred = model(inputs, depths)
+        cls_pred = model(inputs)
 
         loss, loss_detail = criterion(cls_pred=cls_pred, cls_gt=cls_gt)
         loss_value = loss.item()
@@ -334,11 +337,13 @@ def valid_Down_SMART_Net_CLS(model, criterion, data_loader, device, print_freq, 
 
     for batch_data in metric_logger.log_every(data_loader, print_freq, header):
         
-        inputs  = batch_data["image"].to(device)                                                        # (B, C, H, W, D)
-        cls_gt  = batch_data["label"].flatten(1).bool().any(dim=1, keepdim=True).float().to(device)     #  ---> (B, 1)
-        depths  = batch_data["depths"]                                                                  #  ---> (B, 1) Fix bug, change cpu()
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
+        
+        #depths  = batch_data["depths"]                                                                  #  ---> (B, 1) Fix bug, change cpu()
 
-        cls_pred = model(inputs, depths)
+        #cls_pred = model(inputs, depths)
+        cls_pred = model(inputs)
 
         loss, loss_detail = criterion(cls_pred=cls_pred, cls_gt=cls_gt)
         loss_value = loss.item()
@@ -377,12 +382,13 @@ def test_Down_SMART_Net_CLS(model, criterion, data_loader, device, print_freq, b
     
     for batch_data in metric_logger.log_every(data_loader, print_freq, header):
         
-        inputs  = batch_data["image"].to(device)                                                        # (B, C, H, W, D)
-        cls_gt  = batch_data["label"].flatten(1).bool().any(dim=1, keepdim=True).float().to(device)     #  ---> (B, 1)
-        depths  = batch_data["depths"]                                                                  #  ---> (B, 1) Fix bug, change cpu()
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
         
+        #depths  = batch_data["depths"]                                                                  #  ---> (B, 1) Fix bug, change cpu()
 
-        cls_pred = model(inputs, depths)
+        #cls_pred = model(inputs, depths)
+        cls_pred = model(inputs)
 
         loss, loss_detail = criterion(cls_pred=cls_pred, cls_gt=cls_gt)
         loss_value = loss.item()
@@ -448,8 +454,8 @@ def train_Down_SMART_Net_SEG(model, criterion, data_loader, optimizer, device, e
 
     for batch_data in metric_logger.log_every(data_loader, print_freq, header):
         
-        inputs  = batch_data["image"].to(device)                 # (B, C, H, W, D)
-        seg_gt  = batch_data["label"].to(device)                 # (B, C, H, W, D)
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
 
         seg_pred = model(inputs)
 
@@ -481,8 +487,8 @@ def valid_Down_SMART_Net_SEG(model, criterion, data_loader, device, print_freq, 
 
     for batch_data in metric_logger.log_every(data_loader, print_freq, header):
         
-        inputs  = batch_data["image"].to(device)                                   # (B, C, H, W, D)
-        seg_gt  = batch_data["label"].to(device)                                   # (B, C, H, W, D)
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
 
         seg_pred = model(inputs)
 
@@ -521,8 +527,8 @@ def test_Down_SMART_Net_SEG(model, criterion, data_loader, device, print_freq, b
 
     for batch_data in metric_logger.log_every(data_loader, print_freq, header):
         
-        inputs  = batch_data["image"].to(device)                                   # (B, C, H, W, D)
-        seg_gt  = batch_data["label"].to(device)                                   # (B, C, H, W, D)
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
 
         seg_pred = model(inputs)
 

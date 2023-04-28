@@ -126,8 +126,8 @@ class Down_SMART_Net_CLS(torch.nn.Module):
     
     def forward(self, x):
         
-        out = self.encoder(x)
-        x = self.head(out)
+        feature_list = self.encoder(x)
+        x = self.head(feature_list[-1])
         
         return x
 
@@ -210,8 +210,8 @@ class Down_SMART_Net_SEG(torch.nn.Module):
     
     def forward(self, x):
         
-        out = self.encoder(x)
-        x = self.seg_decoder(out)
+        feature_list = self.encoder(x)
+        x = self.seg_decoder(*feature_list)
         
         return x
 
