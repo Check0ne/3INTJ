@@ -264,14 +264,18 @@ if model_name == 'Up_SMART_Net':
     model = Up_SMART_Net().to(device)
 elif model_name == 'Down_SMART_Net_CLS':
     model = Down_SMART_Net_CLS().to(device)
+    output_dir = '/workspace/trained_model/down/cls'
 else:
     model = Down_SMART_Net_SEG().to(device)
-
+    output_dir = '/workspace/trained_model/down/seg'
+    
 # Select Loss
 if training_stream == 'Upstream':
         criterion = Uptask_Loss(name=model_name)
+        output_dir = '/workspace/trained_model/up'
 else :
     criterion = Downtask_Loss(name=model_name)
+    
 
 # Optimizer & LR Scheduler
 optimizer_name = 'adam'
@@ -285,20 +289,18 @@ start_epoch = 0
 resume = input("Resume(T/F): ") # resume은 있는 파일에서 그대로 이어서.. downstream하려면 pre trained로 weight 불러와서 모델에 넣어야 할 듯...?
 if resume == 'T':
     resume = input("Model dir: ")
-    epochs = input("Epochs: ")
-    epochs = int(epochs)
     checkpoint = torch.load(resume, map_location='cpu')
     model.load_state_dict(checkpoint['model_state_dict'])        
     optimizer.load_state_dict(checkpoint['optimizer'])
     #lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])        
     start_epoch = checkpoint['epoch'] + 1  
-    try:
+    try:    
         log_path = os.path.dirname(resume)+'/log.txt'
         lines    = open(log_path,'r').readlines()
         val_loss_list = []
         for l in lines:
             exec('log_dict='+l.replace('NaN', '0'))
-            val_loss_list.append(log_dict['valid_loss'])
+            val_loss_list.append(log_dict['valid_loss']) ##?
         print("Epoch: ", np.argmin(val_loss_list), " Minimum Val Loss ==> ", np.min(val_loss_list))
     except:
         pass
@@ -335,8 +337,6 @@ print_freq = 21
 data_loader_train = train_loader
 data_loader_valid = val_loader
 
-output_dir = '/workspace/trained_model'
-
 
 # Multi GPU
 multi_gpu_mode = 'Single'
@@ -350,7 +350,7 @@ print(f"Start training for {epochs} epochs")
 start_time = time.time()
 
 # Whole LOOP
-for epoch in range(start_epoch, epochs): 
+for epoch in range(start_epoch, start_epoch+epochs): 
     # Train & Valid
     if training_stream == 'Upstream':
         if model_name == 'Up_SMART_Net':
