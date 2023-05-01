@@ -310,11 +310,11 @@ if resume == 'T':
                 state[k] = v.cuda()
 
 pt = input("Pre trained(T/F): ")
-from_pretrained = input("Pre trained dir: ")
-load_weight_type = input("Encoder type(full/encoder): ")
 
 # Using the pre-trained feature extract's weights
 if pt == 'T':
+    from_pretrained = input("Pre trained dir: ")
+    load_weight_type = input("Encoder type(full/encoder): ")
     print("Loading... Pre-trained")      
     model_dict = model.state_dict() 
     print("Check Before weight = ", model_dict['encoder.enc1_1.0.weight'].std().item())
@@ -373,7 +373,7 @@ for epoch in range(start_epoch, epochs):
     else :
         raise KeyError("Wrong training stream `{}`".format(training_stream))
 
-
+# Up down folder 나누기 --> 일단 up model은 저장이 잘 된다.
 # Save & Prediction png
     checkpoint_paths = output_dir + '/epoch_' + str(epoch) + '_checkpoint.pth'
     torch.save({
