@@ -18,7 +18,7 @@ from optimizers import create_optim
 from lr_schedulers import create_scheduler
 
 # data load
-data_dir = '/workspace/Dataset_BUSI_preprocessed'
+data_dir = '/workspace/Prepocessed Dataset'
 
 class_names = ['benign', 'malignant']
 num_class = len(class_names)
@@ -28,15 +28,17 @@ images_dir = [
     for i in range (num_class)
 ]
 
+images_dir[0] = images_dir[0][227:] # for dataset downsampling
+
 masks_dir = [
     sorted(glob(os.path.join(data_dir, class_names[i], "*mask.png"))) 
     for i in range (num_class)
 ]
 
+masks_dir[0] = masks_dir[0][227:] # for dataset downsampling
+
 num_each = [len(images_dir[i]) for i in range(num_class)] # class 별 image_files 개수 리스트
-images_class = [0 for i in range(num_each[0])] + [1 for i in range(num_each[1])]
-images_dir = images_dir[0] + images_dir[1]
-masks_dir = masks_dir[0] + masks_dir[1]
+images_class = [[0 for i in range(num_each[0])], [1 for i in range(num_each[1])]]
 
 print(f"Benign: {num_each[0]}, Malignant: {num_each[1]}")
 
@@ -96,52 +98,38 @@ clstrans = Compose([
     Lambda(int_to_tensor)
 ])
 
-'''
-import matplotlib.pyplot as plt
-from torchvision.transforms import ToPILImage
-
-# ToPILImage 객체 생성
-to_pil = ToPILImage()
-
-# 텐서를 PIL 이미지로 변환
-pil_im = to_pil(check_ds[0][1])
-
-# 이미지 출력
-plt.imshow(pil_im, cmap='gray')
-plt.show()
-'''
-
 val_imtrans = train_imtrans
 val_segtrans = train_segtrans
 
 test_imtrans = train_imtrans
 test_segtrans = train_segtrans
 
-# define array dataset, data loader
-check_ds = ArrayDataset(images_dir, train_imtrans, masks_dir, train_segtrans, images_class, clstrans) 
-check_loader = DataLoader(check_ds, batch_size=10, num_workers=2, pin_memory=torch.cuda.is_available())
-img, mask, cls = monai.utils.misc.first(check_loader)
-print(img.shape, mask.shape, cls.shape)
-
-######################################################################################################## 여기까지 최적화 2023.05.02
-
-
+length = 210
 val_frac = 0.1
 test_frac = 0.1
 test_split = int(test_frac * length)
 val_split = int(val_frac * length) + test_split
 
-train_images = images_b[val_split:] + images_m[val_split:]
-val_images = images_b[test_split:val_split] + images_m[test_split:val_split]
-test_images = images_b[:test_split] + images_m[:test_split]
+benign_images_dir = images_dir[0]
+malignant_images_dir = images_dir[1]
+benign_masks_dir = masks_dir[0]
+malignant_masks_dir = masks_dir[1]
+benign_image_class = images_class[0]
+malignant_image_class = images_class[1]
 
-train_new_segs = new_segs_b[val_split:] + new_segs_m[val_split:]
-val_new_segs = new_segs_b[test_split:val_split] + new_segs_m[test_split:val_split]
-test_new_segs = new_segs_b[:test_split] + new_segs_m[:test_split]
+train_images = benign_images_dir[val_split:] + malignant_images_dir[val_split:]
+val_images = benign_images_dir[test_split:val_split] + malignant_images_dir[test_split:val_split]
+test_images = benign_images_dir[:test_split] + malignant_images_dir[:test_split]
 
-train_image_class = image_class_b[val_split:] + image_class_m[val_split:]
-val_image_class = image_class_b[test_split:val_split] + image_class_m[test_split:val_split]
-test_image_class = image_class_b[:test_split] + image_class_m[:test_split]
+train_masks = benign_masks_dir[val_split:] + malignant_masks_dir[val_split:]
+val_masks = benign_masks_dir[test_split:val_split] + malignant_masks_dir[test_split:val_split]
+test_masks = benign_masks_dir[:test_split] + malignant_masks_dir[:test_split]
+
+train_image_class = benign_image_class[val_split:] + malignant_image_class[val_split:]
+val_image_class = benign_image_class[test_split:val_split] + malignant_image_class[test_split:val_split]
+test_image_class = benign_image_class[:test_split] + malignant_image_class[:test_split]
+
+######################################################################################################## 여기까지 최적화 2023.05.02
 
 # create a training data loader 
 train_ds = ArrayDataset(train_images, train_imtrans, train_new_segs, train_segtrans, train_image_class, clstrans)
