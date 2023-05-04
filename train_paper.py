@@ -49,7 +49,7 @@ def get_args_parser():
     parser.add_argument('--training-stream', default='Upstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
     parser.add_argument('--task', default='CLS', choices=['CLS', 'SEG'], type=str, help='task(CLS/SEG)')
     parser.add_argument('--model-name', default='Up_SMART_Net', choices=['Up_SMART_Net', 'Down_SMART_Net_CLS', 'Down_SMART_Net_SEG'], type=str, help='training stream') 
-    parser.add_argument('--epochs', default=10, type=int, help='Upstream 1000 epochs, Downstream 500 epochs')
+    parser.add_argument('--epochs', default=100, type=int, help='Upstream 1000 epochs, Downstream 500 epochs')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N', help='start epoch')  
     parser.add_argument('--lr', type=float, default=5e-4, metavar='LR', help='learning rate (default: 5e-4)')
     parser.add_argument('--resume',           default='',  help='resume from checkpoint')  # '' = None
@@ -77,7 +77,18 @@ def get_args_parser():
 
 def main(args):
     
-    # data load
+    
+    
+     # data load
+    data_dir = '/workspace/BUS_data'
+    train_images = sorted(glob(os.path.join(data_dir, "train/input", "*.png")))
+    train_masks = sorted(glob(os.path.join(data_dir, "train/seg_label", "*.png")))
+    train_image_class = [0 if 'benign' in i else 1 for i in train_images]
+    val_images = sorted(glob(os.path.join(data_dir, "val/input", "*.png")))
+    val_masks = sorted(glob(os.path.join(data_dir, "val/seg_label", "*.png")))
+    val_image_class = [0 if 'benign' in i else 1 for i in val_images]
+    
+    '''
     data_dir = '/workspace/Prepocessed Dataset'
 
     class_names = ['benign', 'malignant']
@@ -102,6 +113,8 @@ def main(args):
 
     print(f"Benign: {num_each[0]}, Malignant: {num_each[1]}")
 
+
+    '''
     resize_h = 224
     resize_w = 224
 
@@ -139,6 +152,8 @@ def main(args):
     test_imtrans = train_imtrans
     test_segtrans = train_segtrans
 
+    
+    '''
     length = 210
     val_frac = 0.1
     test_frac = 0.1
@@ -164,6 +179,7 @@ def main(args):
     val_image_class = benign_image_class[test_split:val_split] + malignant_image_class[test_split:val_split]
     test_image_class = benign_image_class[:test_split] + malignant_image_class[:test_split]
 
+    '''
     # create a training data loader 
     train_ds = ArrayDataset(train_images, train_imtrans, train_masks, train_segtrans, train_image_class, clstrans)
     train_loader = DataLoader(train_ds, batch_size=4, shuffle=True, num_workers=8, pin_memory=torch.cuda.is_available())
@@ -173,10 +189,11 @@ def main(args):
     val_loader = DataLoader(val_ds, batch_size=4, shuffle=True, num_workers=4, pin_memory=torch.cuda.is_available())
 
     # create a test data loader
-    test_ds = ArrayDataset(test_images, test_imtrans, test_masks, test_segtrans, test_image_class, clstrans)
-    test_loader = DataLoader(test_ds, batch_size=4, shuffle=True, num_workers=4, pin_memory=torch.cuda.is_available())
+    #test_ds = ArrayDataset(test_images, test_imtrans, test_masks, test_segtrans, test_image_class, clstrans)
+    #test_loader = DataLoader(test_ds, batch_size=4, shuffle=True, num_workers=4, pin_memory=torch.cuda.is_available())
 
-    print(f"Training count: {len(train_ds)}, Validation count: {len(val_ds)}, Test count: {len(test_ds)}")
+    print(f"Training count: {len(train_ds)}, Validation count: {len(val_ds)}")
+    #print(f"Training count: {len(train_ds)}, Validation count: {len(val_ds)}, Test count: {len(test_ds)}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print('Device:', device)
