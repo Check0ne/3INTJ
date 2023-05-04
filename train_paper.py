@@ -47,13 +47,14 @@ def get_args_parser():
     parser = argparse.ArgumentParser('SMART-Net Framework Train and Test script', add_help=False)
 
     parser.add_argument('--training-stream', default='Upstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
-    parser.add_argument('--task', default='CLS', type=str, help='task')
+    parser.add_argument('--task', default='CLS', choices=['CLS', 'SEG'], type=str, help='task(CLS/SEG)')
     parser.add_argument('--model-name', default='Up_SMART_Net', choices=['Up_SMART_Net', 'Down_SMART_Net_CLS', 'Down_SMART_Net_SEG'], type=str, help='training stream') 
     parser.add_argument('--epochs', default=10, type=int, help='Upstream 1000 epochs, Downstream 500 epochs')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N', help='start epoch')  
     parser.add_argument('--lr', type=float, default=5e-4, metavar='LR', help='learning rate (default: 5e-4)')
     parser.add_argument('--resume',           default='',  help='resume from checkpoint')  # '' = None
     parser.add_argument('--from-pretrained',  default='',  help='pre-trained from checkpoint')
+    parser.add_argument('--load-weight-type', default='',  help='the types of loading the pre-trained weights')
     
     # DataLoader setting
     parser.add_argument('--batch-size',  default=20, type=int)
@@ -182,8 +183,6 @@ def main(args):
     print('Current cuda device:', torch.cuda.current_device())
     print('Count of using GPUs:', torch.cuda.device_count())
 
-    print(len(train_ds)) #test
-
     # Select Model
     if args.training_stream == 'Upstream':
         model = Up_SMART_Net().to(device)
@@ -228,7 +227,7 @@ def main(args):
     if args.from_pretrained:
         print("Loading... Pre-trained")      
         model_dict = model.state_dict() 
-        print("Check Before weight = ", model_dict['encoder.conv1.weight'].std().item())
+        print("Check Before weight = ", model_dict['encoder.enc1_1.0.weight'].std().item())
         checkpoint = torch.load(args.from_pretrained, map_location='cpu')
         if args.load_weight_type == 'full':
             model.load_state_dict(checkpoint['model_state_dict'])   
@@ -236,7 +235,7 @@ def main(args):
             filtered_dict = {k: v for k, v in checkpoint['model_state_dict'].items() if (k in model_dict) and ('encoder.' in k)}
             model_dict.update(filtered_dict)             
             model.load_state_dict(model_dict)   
-        print("Check After weight  = ", model.state_dict()['encoder.conv1.weight'].std().item())        
+        print("Check After weight  = ", model.state_dict()['encoder.enc1_1.0.weight'].std().item())        
         
     data_loader_train = train_loader
     data_loader_valid = val_loader
