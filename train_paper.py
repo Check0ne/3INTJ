@@ -19,24 +19,14 @@ from losses import Uptask_Loss, Downtask_Loss
 from optimizers import create_optim
 from lr_schedulers import create_scheduler
 
-import monai
-from monai.data import ArrayDataset, create_test_image_2d, decollate_batch, DataLoader
-from monai.inferers import sliding_window_inference
-from monai.metrics import DiceMetric
+from monai.data import ArrayDataset, DataLoader
 from monai.transforms import (
-    Activations,
-    AsDiscrete,
-    AsChannelFirst,
     Compose,
     LoadImage,
     ScaleIntensity,
-    AddChannel,
     SaveImage,
     Resize,
     Lambda,
-    EnsureChannelFirst,
-    RandRotate90,
-    RandFlip,
     Rotate90,
     Flip,
 )
@@ -54,7 +44,10 @@ def str2bool(v):
 def get_args_parser():
     parser = argparse.ArgumentParser('SMART-Net Framework Train and Test script', add_help=False)
 
-    # Setting Upstream, Downstream task
+    # Setting Method
+    parser.add_argument('--method', default='Single', choices=['Multi', 'Single'], type=str, help='Learning method')
+    
+    # Setting Upstream, Downstream, task
     parser.add_argument('--training-stream', default='Upstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
     parser.add_argument('--task', default='CLS', choices=['CLS', 'SEG'], type=str, help='task(CLS/SEG)')
     
@@ -67,7 +60,7 @@ def get_args_parser():
     parser.add_argument('--lr', type=float, default=5e-4, metavar='LR', help='learning rate (default: 5e-4)')
     
     # Option
-    parser.add_argument('--gradual-unfreeze',    type=str2bool, default="TRUE", help='gradual unfreezing the encoder for Downstream Task')
+    parser.add_argument('--gradual-unfreeze', type=str2bool, default="TRUE", help='gradual unfreezing the encoder for Downstream Task')
     
     # Continue Training
     parser.add_argument('--resume',           default='',  help='resume from checkpoint')  # '' = None
@@ -95,8 +88,6 @@ def get_args_parser():
     return parser
 
 def main(args):
-    
-    
     
      # data load
     data_dir = '/workspace/BUS_data'
@@ -220,16 +211,24 @@ def main(args):
     print('Count of using GPUs:', torch.cuda.device_count())
 
     # Select Model
-    if args.training_stream == 'Upstream':
-        model = Up_SMART_Net()
-        criterion = Uptask_Loss(name=args.model_name)
-    else :
+    if args.method == 'Multi':
+        if args.training_stream == 'Upstream':
+            model = Up_SMART_Net()
+            criterion = Uptask_Loss(name=args.model_name)
+        else :
+            if args.task == 'CLS':
+                model = Down_SMART_Net_CLS()
+                criterion = Downtask_Loss(name=args.model_name)
+            else:
+                model = Down_SMART_Net_SEG()
+                criterion = Downtask_Loss(name=args.model_name)
+    else:
         if args.task == 'CLS':
             model = Down_SMART_Net_CLS()
             criterion = Downtask_Loss(name=args.model_name)
         else:
             model = Down_SMART_Net_SEG()
-            criterion = Downtask_Loss(name=args.model_name)
+            criterion = Downtask_Loss(name=args.model_name)        
             
     # Optimizer 
     optimizer = create_optim(name=args.optimizer, model=model)
@@ -292,25 +291,36 @@ def main(args):
 
     # Whole LOOP
     for epoch in range(args.start_epoch, args.epochs): 
-        # Train & Valid
-        if args.training_stream == 'Upstream':
-            if args.model_name == 'Up_SMART_Net':
-                train_stats = train_Up_SMART_Net(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size)
-                print("Averaged train_stats: ", train_stats)
-                valid_stats = valid_Up_SMART_Net(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
-                print("Averaged valid_stats: ", valid_stats)
-        elif args.training_stream == 'Downstream':
-            if args.model_name == 'Down_SMART_Net_CLS':
+        
+        if args.method == 'Multi':
+            if args.training_stream == 'Upstream':
+                if args.model_name == 'Up_SMART_Net':
+                    train_stats = train_Up_SMART_Net(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size)
+                    print("Averaged train_stats: ", train_stats)
+                    valid_stats = valid_Up_SMART_Net(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
+                    print("Averaged valid_stats: ", valid_stats)
+            elif args.training_stream == 'Downstream':
+                if args.task == 'CLS':
+                    train_stats = train_Down_SMART_Net_CLS(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
+                    print("Averaged train_stats: ", train_stats)
+                    valid_stats = valid_Down_SMART_Net_CLS(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
+                    print("Averaged valid_stats: ", valid_stats)
+                else :
+                    train_stats = train_Down_SMART_Net_SEG(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
+                    print("Averaged train_stats: ", train_stats)
+                    valid_stats = valid_Down_SMART_Net_SEG(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
+                    print("Averaged valid_stats: ", valid_stats)
+        elif args.method == 'Single':
+            if args.task == 'CLS':
                 train_stats = train_Down_SMART_Net_CLS(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
                 print("Averaged train_stats: ", train_stats)
                 valid_stats = valid_Down_SMART_Net_CLS(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
                 print("Averaged valid_stats: ", valid_stats)
-            elif args.model_name == 'Down_SMART_Net_SEG':
+            else:
                 train_stats = train_Down_SMART_Net_SEG(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
                 print("Averaged train_stats: ", train_stats)
                 valid_stats = valid_Down_SMART_Net_SEG(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
                 print("Averaged valid_stats: ", valid_stats)
-
         else :
             raise KeyError("Wrong training stream `{}`".format(args.training_stream))
 
