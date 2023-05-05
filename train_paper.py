@@ -43,15 +43,33 @@ from monai.transforms import (
 from monai.visualize import plot_2d_or_3d_image
 from torch.utils.tensorboard import SummaryWriter
 
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 def get_args_parser():
     parser = argparse.ArgumentParser('SMART-Net Framework Train and Test script', add_help=False)
 
+    # Setting Upstream, Downstream task
     parser.add_argument('--training-stream', default='Upstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
     parser.add_argument('--task', default='CLS', choices=['CLS', 'SEG'], type=str, help='task(CLS/SEG)')
+    
+    # Model parameters
     parser.add_argument('--model-name', default='Up_SMART_Net', choices=['Up_SMART_Net', 'Down_SMART_Net_CLS', 'Down_SMART_Net_SEG'], type=str, help='training stream') 
+    
+    # Learning rate and schedule and Epoch parameters
     parser.add_argument('--epochs', default=100, type=int, help='Upstream 1000 epochs, Downstream 500 epochs')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N', help='start epoch')  
     parser.add_argument('--lr', type=float, default=5e-4, metavar='LR', help='learning rate (default: 5e-4)')
+    
+    # Option
+    parser.add_argument('--gradual-unfreeze',    type=str2bool, default="TRUE", help='gradual unfreezing the encoder for Downstream Task')
+    
+    # Continue Training
     parser.add_argument('--resume',           default='',  help='resume from checkpoint')  # '' = None
     parser.add_argument('--from-pretrained',  default='',  help='pre-trained from checkpoint')
     parser.add_argument('--load-weight-type', default='',  help='the types of loading the pre-trained weights')
@@ -67,6 +85,7 @@ def get_args_parser():
     parser.add_argument('--print-freq', default=10, type=int, metavar='N', help='print frequency (default: 10)')
     
     # DataParrel or Single GPU train
+    parser.add_argument('--multi-gpu-mode',       default='Single', choices=['DataParallel', 'Single'], type=str, help='multi-gpu-mode') 
     parser.add_argument('--cuda-visible-devices', default='0', type=str, help='cuda_visible_devices')
     
     
@@ -182,11 +201,11 @@ def main(args):
     '''
     # create a training data loader 
     train_ds = ArrayDataset(train_images, train_imtrans, train_masks, train_segtrans, train_image_class, clstrans)
-    train_loader = DataLoader(train_ds, batch_size=4, shuffle=True, num_workers=8, pin_memory=torch.cuda.is_available())
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=torch.cuda.is_available())
 
     # create a validation data loader
     val_ds = ArrayDataset(val_images, val_imtrans, val_masks, val_segtrans, val_image_class, clstrans)
-    val_loader = DataLoader(val_ds, batch_size=4, shuffle=True, num_workers=4, pin_memory=torch.cuda.is_available())
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=torch.cuda.is_available())
 
     # create a test data loader
     #test_ds = ArrayDataset(test_images, test_imtrans, test_masks, test_segtrans, test_image_class, clstrans)
@@ -202,18 +221,20 @@ def main(args):
 
     # Select Model
     if args.training_stream == 'Upstream':
-        model = Up_SMART_Net().to(device)
+        model = Up_SMART_Net()
         criterion = Uptask_Loss(name=args.model_name)
     else :
         if args.task == 'CLS':
-            model = Down_SMART_Net_CLS().to(device)
+            model = Down_SMART_Net_CLS()
             criterion = Downtask_Loss(name=args.model_name)
         else:
-            model = Down_SMART_Net_SEG().to(device)
+            model = Down_SMART_Net_SEG()
             criterion = Downtask_Loss(name=args.model_name)
             
     # Optimizer 
     optimizer = create_optim(name=args.optimizer, model=model)
+    
+    global log_dict
     
     # Resume
     if args.resume:
@@ -222,13 +243,13 @@ def main(args):
         model.load_state_dict(checkpoint['model_state_dict'])        
         optimizer.load_state_dict(checkpoint['optimizer'])
         #lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])        
-        args.start_epoch = checkpoint['epoch'] + 1  
+        args.start_epoch = checkpoint['epoch'] + 1 
         try:
             log_path = os.path.dirname(args.resume)+'/log.txt'
             lines    = open(log_path,'r').readlines()
             val_loss_list = []
             for l in lines:
-                exec('log_dict='+l.replace('NaN', '0'))
+                log_dict = json.loads(l.replace('NaN', '0'))
                 val_loss_list.append(log_dict['valid_loss'])
             print("Epoch: ", np.argmin(val_loss_list), " Minimum Val Loss ==> ", np.min(val_loss_list))
         except:
@@ -258,10 +279,13 @@ def main(args):
     data_loader_valid = val_loader
 
     # Multi GPU
-    multi_gpu_mode = 'Single'
-
-    # Option
-    gradual_unfreeze = True
+    if args.multi_gpu_mode == 'DataParallel':
+        model = torch.nn.DataParallel(model)
+        model.to(device)
+    elif args.multi_gpu_mode == 'Single':
+        model.to(device)
+    else :
+        raise Exception('Error...! args.multi_gpu_mode') 
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
@@ -277,12 +301,12 @@ def main(args):
                 print("Averaged valid_stats: ", valid_stats)
         elif args.training_stream == 'Downstream':
             if args.model_name == 'Down_SMART_Net_CLS':
-                train_stats = train_Down_SMART_Net_CLS(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, gradual_unfreeze)
+                train_stats = train_Down_SMART_Net_CLS(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
                 print("Averaged train_stats: ", train_stats)
                 valid_stats = valid_Down_SMART_Net_CLS(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
                 print("Averaged valid_stats: ", valid_stats)
             elif args.model_name == 'Down_SMART_Net_SEG':
-                train_stats = train_Down_SMART_Net_SEG(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, gradual_unfreeze)
+                train_stats = train_Down_SMART_Net_SEG(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
                 print("Averaged train_stats: ", train_stats)
                 valid_stats = valid_Down_SMART_Net_SEG(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
                 print("Averaged valid_stats: ", valid_stats)
@@ -293,7 +317,7 @@ def main(args):
     # Save & Prediction png
         checkpoint_paths = args.output_dir + '/epoch_' + str(epoch) + '_checkpoint.pth'
         torch.save({
-            'model_state_dict': model.state_dict() if multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
+            'model_state_dict': model.state_dict() if args.multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
             'optimizer': optimizer.state_dict(),
             #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
             'epoch': epoch,
@@ -322,7 +346,6 @@ if __name__ == '__main__':
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         
- 
     os.environ["CUDA_VISIBLE_DEVICES"]  =  args.cuda_visible_devices        
     
     main(args)
