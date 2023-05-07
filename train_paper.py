@@ -312,14 +312,14 @@ def main(args):
                     print("Averaged valid_stats: ", valid_stats)
         elif args.method == 'Single':
             if args.task == 'CLS':
-                train_stats = train_Down_SMART_Net_CLS(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
+                train_stats = train_Up_SMART_Net_Single_CLS(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size)
                 print("Averaged train_stats: ", train_stats)
-                valid_stats = valid_Down_SMART_Net_CLS(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
+                valid_stats = valid_Up_SMART_Net_Single_CLS(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
                 print("Averaged valid_stats: ", valid_stats)
             else:
-                train_stats = train_Down_SMART_Net_SEG(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size, args.gradual_unfreeze)
+                train_stats = train_Up_SMART_Net_Single_SEG(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size)
                 print("Averaged train_stats: ", train_stats)
-                valid_stats = valid_Down_SMART_Net_SEG(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
+                valid_stats = valid_Up_SMART_Net_Single_SEG(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
                 print("Averaged valid_stats: ", valid_stats)
         else :
             raise KeyError("Wrong training stream `{}`".format(args.training_stream))
