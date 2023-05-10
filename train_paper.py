@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import PIL
 import json
 import time
+import random
 import datetime
 import argparse
 from pathlib import Path
@@ -45,7 +46,7 @@ def get_args_parser():
     parser = argparse.ArgumentParser('SMART-Net Framework Train and Test script', add_help=False)
 
     # Setting Method
-    parser.add_argument('--method', default='Single', choices=['Multi', 'Single'], type=str, help='Learning method')
+    parser.add_argument('--method', default='Multi', choices=['Multi', 'Single'], type=str, help='Learning method')
     
     # Setting Upstream, Downstream, task
     parser.add_argument('--training-stream', default='Upstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
@@ -86,6 +87,16 @@ def get_args_parser():
     parser.add_argument('--output-dir', default='/workspace/trained_model/up', help='path where to save, empty for no saving')
     
     return parser
+
+# Fix random seeds for reproducibility
+random_seed = 42
+torch.manual_seed(random_seed)
+torch.cuda.manual_seed(random_seed)
+torch.cuda.manual_seed_all(random_seed) 
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+np.random.seed(random_seed)
+random.seed(random_seed)
 
 def main(args):
     
@@ -289,6 +300,8 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
 
+    best_valid_loss = np.inf
+    
     # Whole LOOP
     for epoch in range(args.start_epoch, args.epochs): 
         
@@ -325,18 +338,21 @@ def main(args):
             raise KeyError("Wrong training stream `{}`".format(args.training_stream))
 
     # Save & Prediction png
-        checkpoint_paths = args.output_dir + '/epoch_' + str(epoch) + '_checkpoint.pth'
-        torch.save({
+        if best_valid_loss > valid_stats['loss']:
+            best_valid_loss = valid_stats['loss']
+            best_model_epoch = epoch
+            best_model_paths = args.output_dir + 'best.pth'
+            torch.save({
             'model_state_dict': model.state_dict() if args.multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
             'optimizer': optimizer.state_dict(),
             #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
             'epoch': epoch,
             'args': args,
-        }, checkpoint_paths)
-
+            }, best_model_paths)
+        
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                     **{f'valid_{k}': v for k, v in valid_stats.items()},
-                    'epoch': epoch}
+                    'epoch': epoch, 'best_model_epoch': best_model_epoch}
 
         if args.output_dir:
             with open(args.output_dir + "/log.txt", "a") as f:
