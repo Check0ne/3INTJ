@@ -46,14 +46,14 @@ def get_args_parser():
     parser = argparse.ArgumentParser('SMART-Net Framework Train and Test script', add_help=False)
 
     # Setting Method
-    parser.add_argument('--method', default='Multi', choices=['Multi', 'Single'], type=str, help='Learning method')
+    parser.add_argument('--method', default='Single', choices=['Multi', 'Single'], type=str, help='Learning method')
     
     # Setting Upstream, Downstream, task
     parser.add_argument('--training-stream', default='Upstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
-    parser.add_argument('--task', default='CLS', choices=['CLS', 'SEG'], type=str, help='task(CLS/SEG)')
+    parser.add_argument('--task', default='SEG', choices=['CLS', 'SEG'], type=str, help='task(CLS/SEG)')
     
     # Model parameters
-    parser.add_argument('--model-name', default='Up_SMART_Net', choices=['Up_SMART_Net', 'Down_SMART_Net_CLS', 'Down_SMART_Net_SEG'], type=str, help='training stream') 
+    parser.add_argument('--model-name', default='Down_SMART_Net_SEG', choices=['Up_SMART_Net', 'Up_SMART_Net_Dual_CLS_SEG','Down_SMART_Net_CLS', 'Down_SMART_Net_SEG'], type=str, help='training stream') 
     
     # Learning rate and schedule and Epoch parameters
     parser.add_argument('--epochs', default=100, type=int, help='Upstream 1000 epochs, Downstream 500 epochs')
@@ -84,7 +84,7 @@ def get_args_parser():
     
     
     # Prediction and Save setting
-    parser.add_argument('--output-dir', default='/workspace/trained_model/up', help='path where to save, empty for no saving')
+    parser.add_argument('--output-dir', default='/workspace/trained_model/single/seg', help='path where to save, empty for no saving')
     
     return parser
 
@@ -224,8 +224,12 @@ def main(args):
     # Select Model
     if args.method == 'Multi':
         if args.training_stream == 'Upstream':
-            model = Up_SMART_Net()
-            criterion = Uptask_Loss(name=args.model_name)
+            if args.model_name == 'Up_SMART_Net': 
+                model = Up_SMART_Net()
+                criterion = Uptask_Loss(name=args.model_name)
+            else :
+                model = Up_SMART_Net_Dual_CLS_SEG()
+                criterion = Uptask_Loss(name=args.model_name)
         else :
             if args.task == 'CLS':
                 model = Down_SMART_Net_CLS()
@@ -300,7 +304,10 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
 
-    best_valid_loss = np.inf
+    best_valid_auc = 0
+    best_valid_dice = 0
+    best_auc_epoch = 0
+    best_dice_epoch = 0
     
     # Whole LOOP
     for epoch in range(args.start_epoch, args.epochs): 
@@ -311,6 +318,11 @@ def main(args):
                     train_stats = train_Up_SMART_Net(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size)
                     print("Averaged train_stats: ", train_stats)
                     valid_stats = valid_Up_SMART_Net(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
+                    print("Averaged valid_stats: ", valid_stats)
+                else :
+                    train_stats = train_Up_SMART_Net_Dual_CLS_SEG(model, criterion, data_loader_train, optimizer, device, epoch, args.print_freq, args.batch_size)
+                    print("Averaged train_stats: ", train_stats)
+                    valid_stats = valid_Up_SMART_Net_Dual_CLS_SEG(model, criterion, data_loader_valid, device, args.print_freq, args.batch_size)
                     print("Averaged valid_stats: ", valid_stats)
             elif args.training_stream == 'Downstream':
                 if args.task == 'CLS':
@@ -338,22 +350,67 @@ def main(args):
             raise KeyError("Wrong training stream `{}`".format(args.training_stream))
 
     # Save & Prediction png
-        if best_valid_loss > valid_stats['loss']:
-            best_valid_loss = valid_stats['loss']
-            best_model_epoch = epoch
-            best_model_paths = args.output_dir + 'best.pth'
-            torch.save({
-            'model_state_dict': model.state_dict() if args.multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
-            'optimizer': optimizer.state_dict(),
-            #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
-            'epoch': epoch,
-            'args': args,
-            }, best_model_paths)
-        
-        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                    **{f'valid_{k}': v for k, v in valid_stats.items()},
-                    'epoch': epoch, 'best_model_epoch': best_model_epoch}
+        if args.method == 'Multi' and args.training_stream == 'Upstream':
+            if best_valid_auc < valid_stats['auc']:
+                best_valid_auc = valid_stats['auc']
+                best_auc_epoch = epoch
+                best_auc_paths = args.output_dir + '_best_auc.pth'
+                torch.save({
+                'model_state_dict': model.state_dict() if args.multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
+                'optimizer': optimizer.state_dict(),
+                #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
+                'epoch': epoch,
+                'args': args,
+                }, best_auc_paths)
 
+            if best_valid_dice < valid_stats['dice']:
+                best_valid_dice = valid_stats['dice']
+                best_dice_epoch = epoch
+                best_dice_paths = args.output_dir + '_best_dice.pth'
+                torch.save({
+                'model_state_dict': model.state_dict() if args.multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
+                'optimizer': optimizer.state_dict(),
+                #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
+                'epoch': epoch,
+                'args': args,
+                }, best_dice_paths)
+
+            log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                        **{f'valid_{k}': v for k, v in valid_stats.items()},
+                        'epoch': epoch, 'best_auc_epoch': best_auc_epoch,'best_dice_epoch': best_dice_epoch}
+        else:
+            if args.task == 'CLS':
+                if best_valid_auc < valid_stats['auc']:
+                    best_valid_auc = valid_stats['auc']
+                    best_auc_epoch = epoch
+                    best_auc_paths = args.output_dir + '_best_auc.pth'
+                    torch.save({
+                    'model_state_dict': model.state_dict() if args.multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
+                    'optimizer': optimizer.state_dict(),
+                    #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
+                    'epoch': epoch,
+                    'args': args,
+                    }, best_auc_paths)
+                    
+                log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                        **{f'valid_{k}': v for k, v in valid_stats.items()},
+                        'epoch': epoch, 'best_auc_epoch': best_auc_epoch}
+            else:
+                if best_valid_dice < valid_stats['dice']:
+                    best_valid_dice = valid_stats['dice']
+                    best_dice_epoch = epoch
+                    best_dice_paths = args.output_dir + '_best_dice.pth'
+                    torch.save({
+                    'model_state_dict': model.state_dict() if args.multi_gpu_mode == 'Single' else model.module.state_dict(), # multi-gpu mode?
+                    'optimizer': optimizer.state_dict(),
+                    #'lr_scheduler': lr_scheduler.state_dict(), # scheduler 역할
+                    'epoch': epoch,
+                    'args': args,
+                    }, best_dice_paths)
+
+                log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                            **{f'valid_{k}': v for k, v in valid_stats.items()},
+                            'epoch': epoch,'best_dice_epoch': best_dice_epoch}    
         if args.output_dir:
             with open(args.output_dir + "/log.txt", "a") as f:
                 f.write(json.dumps(log_stats) + "\n")
