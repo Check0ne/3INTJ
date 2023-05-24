@@ -49,7 +49,7 @@ def get_args_parser():
     parser.add_argument('--method', default='Single', choices=['Multi', 'Single'], type=str, help='Learning method')
     
     # Setting Upstream, Downstream, task
-    parser.add_argument('--training-stream', default='Upstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
+    parser.add_argument('--training-stream', default='Downstream', choices=['Upstream', 'Downstream'], type=str, help='training stream') 
     parser.add_argument('--task', default='SEG', choices=['CLS', 'SEG'], type=str, help='task(CLS/SEG)')
     
     # Model parameters
@@ -109,33 +109,6 @@ def main(args):
     val_masks = sorted(glob(os.path.join(data_dir, "val/seg_label", "*.png")))
     val_image_class = [0 if 'benign' in i else 1 for i in val_images]
     
-    '''
-    data_dir = '/workspace/Prepocessed Dataset'
-
-    class_names = ['benign', 'malignant']
-    num_class = len(class_names)
-
-    images_dir = [
-        sorted(glob(os.path.join(data_dir, class_names[i], "*).png")))
-        for i in range (num_class)
-    ]
-
-    images_dir[0] = images_dir[0][227:] # for dataset downsampling
-
-    masks_dir = [
-        sorted(glob(os.path.join(data_dir, class_names[i], "*mask.png"))) 
-        for i in range (num_class)
-    ]
-
-    masks_dir[0] = masks_dir[0][227:] # for dataset downsampling
-
-    num_each = [len(images_dir[i]) for i in range(num_class)] # class 별 image_files 개수 리스트
-    images_class = [[0 for i in range(num_each[0])], [1 for i in range(num_each[1])]]
-
-    print(f"Benign: {num_each[0]}, Malignant: {num_each[1]}")
-
-
-    '''
     resize_h = 224
     resize_w = 224
 
@@ -173,34 +146,6 @@ def main(args):
     test_imtrans = train_imtrans
     test_segtrans = train_segtrans
 
-    
-    '''
-    length = 210
-    val_frac = 0.1
-    test_frac = 0.1
-    test_split = int(test_frac * length)
-    val_split = int(val_frac * length) + test_split
-
-    benign_images_dir = images_dir[0]
-    malignant_images_dir = images_dir[1]
-    benign_masks_dir = masks_dir[0]
-    malignant_masks_dir = masks_dir[1]
-    benign_image_class = images_class[0]
-    malignant_image_class = images_class[1]
-
-    train_images = benign_images_dir[val_split:] + malignant_images_dir[val_split:]
-    val_images = benign_images_dir[test_split:val_split] + malignant_images_dir[test_split:val_split]
-    test_images = benign_images_dir[:test_split] + malignant_images_dir[:test_split]
-
-    train_masks = benign_masks_dir[val_split:] + malignant_masks_dir[val_split:]
-    val_masks = benign_masks_dir[test_split:val_split] + malignant_masks_dir[test_split:val_split]
-    test_masks = benign_masks_dir[:test_split] + malignant_masks_dir[:test_split]
-
-    train_image_class = benign_image_class[val_split:] + malignant_image_class[val_split:]
-    val_image_class = benign_image_class[test_split:val_split] + malignant_image_class[test_split:val_split]
-    test_image_class = benign_image_class[:test_split] + malignant_image_class[:test_split]
-
-    '''
     # create a training data loader 
     train_ds = ArrayDataset(train_images, train_imtrans, train_masks, train_segtrans, train_image_class, clstrans)
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=torch.cuda.is_available())

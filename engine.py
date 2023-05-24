@@ -416,21 +416,26 @@ def train_Down_SMART_Net_CLS(model, criterion, data_loader, optimizer, device, e
     if gradual_unfreeze:
         # Gradual Unfreezing
         # 10 epoch 씩 one stage block 풀기, 100 epoch까지는 아예 고정
-        if epoch >= 0 and epoch <= 100:
+        if epoch >= 0 and epoch < 20:
             freeze_params(model.module.encoder) if hasattr(model, 'module') else freeze_params(model.encoder)
             print("Freeze encoder ...!")
-        elif epoch >= 101 and epoch < 111:
-            print("Unfreeze encoder.layer4 ...!")
-            unfreeze_params(model.module.encoder.layer4) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer4)
-        elif epoch >= 111 and epoch < 121:
+        elif epoch >= 20 and epoch < 40:
+            print("Unfreeze encoder.layer4, 5 ...!")
+            unfreeze_params(model.module.encoder.enc5_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc5_1)
+            unfreeze_params(model.module.encoder.enc4_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc4_1)
+            unfreeze_params(model.module.encoder.enc4_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc4_2)
+        elif epoch >= 40 and epoch < 60:
             print("Unfreeze encoder.layer3 ...!")
-            unfreeze_params(model.module.encoder.layer3) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer3)
-        elif epoch >= 121 and epoch < 131:
+            unfreeze_params(model.module.encoder.enc3_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc3_1)
+            unfreeze_params(model.module.encoder.enc3_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc3_2)
+        elif epoch >= 60 and epoch < 80:
             print("Unfreeze encoder.layer2 ...!")
-            unfreeze_params(model.module.encoder.layer2) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer2)
-        elif epoch >= 131 and epoch < 141:
+            unfreeze_params(model.module.encoder.enc2_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc2_1)
+            unfreeze_params(model.module.encoder.enc2_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc2_2)
+        elif epoch >= 80 and epoch < 100:
             print("Unfreeze encoder.layer1 ...!")
-            unfreeze_params(model.module.encoder.layer1) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer1)
+            unfreeze_params(model.module.encoder.enc1_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc1_1)
+            unfreeze_params(model.module.encoder.enc1_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc1_2)
         else :
             print("Unfreeze encoder.stem ...!")
             unfreeze_params(model.module.encoder) if hasattr(model, 'module') else unfreeze_params(model.encoder)
@@ -571,20 +576,20 @@ def train_Down_SMART_Net_SEG(model, criterion, data_loader, optimizer, device, e
         if epoch >= 0 and epoch < 20:
             freeze_params(model.module.encoder) if hasattr(model, 'module') else freeze_params(model.encoder)
             print("Freeze encoder ...!")
-        elif epoch >= 20 and epoch < 60:
+        elif epoch >= 20 and epoch < 40:
             print("Unfreeze encoder.layer4, 5 ...!")
             unfreeze_params(model.module.encoder.enc5_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc5_1)
             unfreeze_params(model.module.encoder.enc4_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc4_1)
             unfreeze_params(model.module.encoder.enc4_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc4_2)
-        elif epoch >= 60 and epoch < 80:
+        elif epoch >= 40 and epoch < 60:
             print("Unfreeze encoder.layer3 ...!")
             unfreeze_params(model.module.encoder.enc3_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc3_1)
             unfreeze_params(model.module.encoder.enc3_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc3_2)
-        elif epoch >= 80 and epoch < 90:
+        elif epoch >= 60 and epoch < 80:
             print("Unfreeze encoder.layer2 ...!")
             unfreeze_params(model.module.encoder.enc2_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc2_1)
             unfreeze_params(model.module.encoder.enc2_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc2_2)
-        elif epoch >= 90 and epoch < 100:
+        elif epoch >= 80 and epoch < 100:
             print("Unfreeze encoder.layer1 ...!")
             unfreeze_params(model.module.encoder.enc1_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc1_1)
             unfreeze_params(model.module.encoder.enc1_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc1_2)
