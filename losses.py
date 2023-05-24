@@ -208,9 +208,14 @@ class Uptask_Loss(torch.nn.Module):
             loss_cls     = self.loss_cls(cls_pred, cls_gt)
             loss_seg     = self.loss_seg(seg_pred, seg_gt)
             loss_rec     = self.loss_rec(rec_pred, rec_gt)
-            loss_consist = self.loss_consist(y_cls=cls_pred, y_seg=seg_pred)
-            total        = self.cls_weight*loss_cls + self.seg_weight*loss_seg + self.rec_weight*loss_rec + self.consist_weight*loss_consist
-            return total, {'CLS_Loss':(self.cls_weight*loss_cls).item(), 'SEG_Loss':(self.seg_weight*loss_seg).item(), 'REC_Loss':(self.rec_weight*loss_rec).item(), 'Consist_Loss':(self.consist_weight*loss_consist).item()}
+            #loss_consist = self.loss_consist(y_cls=cls_pred, y_seg=seg_pred)
+            total        = self.cls_weight*loss_cls + self.seg_weight*loss_seg + self.rec_weight*loss_rec #+ self.consist_weight*loss_consist
+            return total, {'CLS_Loss':(self.cls_weight*loss_cls).item(), 'SEG_Loss':(self.seg_weight*loss_seg).item(), 'REC_Loss':(self.rec_weight*loss_rec).item()} #'Consist_Loss':(self.consist_weight*loss_consist).item()}
+        elif self.name == 'Up_SMART_Net_Dual_CLS_SEG':
+            loss_cls     = self.loss_cls(cls_pred, cls_gt)
+            loss_seg     = self.loss_seg(seg_pred, seg_gt)
+            total        = self.cls_weight*loss_cls + self.seg_weight*loss_seg
+            return total, {'CLS_Loss':(self.cls_weight*loss_cls).item(), 'SEG_Loss':(self.seg_weight*loss_seg).item()}
         else :
             raise KeyError("Wrong Loss name `{}`".format(self.name))  
 

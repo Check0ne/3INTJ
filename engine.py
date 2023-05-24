@@ -264,6 +264,144 @@ def test_Up_SMART_Net_Patient_Level(model, criterion, data_loader, device, print
     return {k: round(meter.global_avg, 7) for k, meter in metric_logger.meters.items()}
 
 
+    # Dual
+        # CLS+SEG
+def train_Up_SMART_Net_Dual_CLS_SEG(model, criterion, data_loader, optimizer, device, epoch, print_freq, batch_size):
+    # 2d slice-wise based Learning...! 
+    model.train(True)
+    metric_logger = utils.MetricLogger(delimiter="  ", n=batch_size)
+    metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
+    header = 'Epoch: [{}]'.format(epoch)
+    
+    for batch_data in metric_logger.log_every(data_loader, print_freq, header):
+
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
+
+        cls_pred, seg_pred = model(inputs)
+        
+        loss, loss_detail = criterion(cls_pred=cls_pred, seg_pred=seg_pred, cls_gt=cls_gt, seg_gt=seg_gt)
+        loss_value = loss.item()
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, stopping training".format(loss_value))
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        metric_logger.update(loss=loss_value)
+        if loss_detail is not None:
+            metric_logger.update(**loss_detail)
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        
+ 
+    return {k: round(meter.global_avg, 7) for k, meter in metric_logger.meters.items()}
+
+@torch.no_grad()
+def valid_Up_SMART_Net_Dual_CLS_SEG(model, criterion, data_loader, device, print_freq, batch_size):
+    # 2d slice-wise based evaluate...! 
+    model.eval()
+    metric_logger = utils.MetricLogger(delimiter="  ", n=batch_size)
+    header = 'Valid:'
+
+    for batch_data in metric_logger.log_every(data_loader, print_freq, header):
+        
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
+
+        cls_pred, seg_pred = model(inputs)
+
+        loss, loss_detail = criterion(cls_pred=cls_pred, seg_pred=seg_pred, cls_gt=cls_gt, seg_gt=seg_gt)
+        loss_value = loss.item()
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, stopping training".format(loss_value))
+
+        # LOSS
+        metric_logger.update(loss=loss_value)  # 1 epoch의 배치들의 loss를 적립한뒤 epoch 끝나면 갯수 만큼 평균
+        if loss_detail is not None:
+            metric_logger.update(**loss_detail)
+
+        # post-processing
+        cls_pred = torch.sigmoid(cls_pred)
+        seg_pred = torch.sigmoid(seg_pred)
+
+        # Metric CLS
+        auc                 = auc_metric(y_pred=cls_pred, y=cls_gt)
+        confuse_matrix      = confuse_metric(y_pred=cls_pred.round(), y=cls_gt)   # pred_cls must be round() !!
+
+
+        # Metrics SEG
+        result_dice = dice_metric(y_pred=seg_pred.round(), y=seg_gt)              # pred_seg must be round() !! 
+
+    # Aggregatation
+    auc                = auc_metric.aggregate()
+    f1, acc, sen, spe  = confuse_metric.aggregate()
+    dice               = dice_metric.aggregate().item()    
+    
+    metric_logger.update(auc=auc, f1=f1, acc=acc, sen=sen, spe=spe)          
+    metric_logger.update(dice=dice)  
+
+    auc_metric.reset()
+    confuse_metric.reset()
+    dice_metric.reset()
+
+    return {k: round(meter.global_avg, 7) for k, meter in metric_logger.meters.items()}
+    
+@torch.no_grad()
+def test_Up_SMART_Net_Dual_CLS_SEG(model, criterion, data_loader, device, print_freq, batch_size):
+    # 2d slice-wise based evaluate...! 
+    model.eval()
+    metric_logger = utils.MetricLogger(delimiter="  ", n=batch_size)
+    header = 'TEST:'
+
+    for batch_data in metric_logger.log_every(data_loader, print_freq, header):
+        
+        inputs  = batch_data[0].to(device)      # (B, C, H, W)
+        seg_gt  = batch_data[1].to(device)      # (B, C, H, W)
+        cls_gt  = batch_data[2].to(device)      # (B, 1) 
+
+        cls_pred, seg_pred = model(inputs)
+
+        loss, loss_detail = criterion(cls_pred=cls_pred, seg_pred=seg_pred, cls_gt=cls_gt, seg_gt=seg_gt)
+        loss_value = loss.item()
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, stopping training".format(loss_value))
+
+        # LOSS
+        metric_logger.update(loss=loss_value)  # 1 epoch의 배치들의 loss를 적립한뒤 epoch 끝나면 갯수 만큼 평균
+        if loss_detail is not None:
+            metric_logger.update(**loss_detail)
+
+        # post-processing
+        cls_pred = torch.sigmoid(cls_pred)
+        seg_pred = torch.sigmoid(seg_pred)
+
+        # Metric CLS
+        auc                 = auc_metric(y_pred=cls_pred, y=cls_gt)
+        confuse_matrix      = confuse_metric(y_pred=cls_pred.round(), y=cls_gt)   # pred_cls must be round() !!
+
+
+        # Metrics SEG
+        result_dice = dice_metric(y_pred=seg_pred.round(), y=seg_gt)              # pred_seg must be round() !! 
+
+    # Aggregatation
+    auc                = auc_metric.aggregate()
+    f1, acc, sen, spe  = confuse_metric.aggregate()
+    dice               = dice_metric.aggregate().item()    
+    
+    metric_logger.update(auc=auc, f1=f1, acc=acc, sen=sen, spe=spe)          
+    metric_logger.update(dice=dice)
+    
+    auc_metric.reset()
+    confuse_metric.reset()
+    dice_metric.reset()
+
+    return {k: round(meter.global_avg, 7) for k, meter in metric_logger.meters.items()}
 
 ########################################################
 # Down Task
@@ -430,21 +568,26 @@ def train_Down_SMART_Net_SEG(model, criterion, data_loader, optimizer, device, e
     if gradual_unfreeze:
         # Gradual Unfreezing
         # 10 epoch 씩 one stage block 풀기, 100 epoch까지는 아예 고정
-        if epoch >= 0 and epoch <= 100:
+        if epoch >= 0 and epoch < 20:
             freeze_params(model.module.encoder) if hasattr(model, 'module') else freeze_params(model.encoder)
             print("Freeze encoder ...!")
-        elif epoch >= 101 and epoch < 111:
-            print("Unfreeze encoder.layer4 ...!")
-            unfreeze_params(model.module.encoder.layer4) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer4)
-        elif epoch >= 111 and epoch < 121:
+        elif epoch >= 20 and epoch < 60:
+            print("Unfreeze encoder.layer4, 5 ...!")
+            unfreeze_params(model.module.encoder.enc5_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc5_1)
+            unfreeze_params(model.module.encoder.enc4_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc4_1)
+            unfreeze_params(model.module.encoder.enc4_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc4_2)
+        elif epoch >= 60 and epoch < 80:
             print("Unfreeze encoder.layer3 ...!")
-            unfreeze_params(model.module.encoder.layer3) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer3)
-        elif epoch >= 121 and epoch < 131:
+            unfreeze_params(model.module.encoder.enc3_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc3_1)
+            unfreeze_params(model.module.encoder.enc3_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc3_2)
+        elif epoch >= 80 and epoch < 90:
             print("Unfreeze encoder.layer2 ...!")
-            unfreeze_params(model.module.encoder.layer2) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer2)
-        elif epoch >= 131 and epoch < 141:
+            unfreeze_params(model.module.encoder.enc2_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc2_1)
+            unfreeze_params(model.module.encoder.enc2_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc2_2)
+        elif epoch >= 90 and epoch < 100:
             print("Unfreeze encoder.layer1 ...!")
-            unfreeze_params(model.module.encoder.layer1) if hasattr(model, 'module') else unfreeze_params(model.encoder.layer1)
+            unfreeze_params(model.module.encoder.enc1_1) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc1_1)
+            unfreeze_params(model.module.encoder.enc1_2) if hasattr(model, 'module') else unfreeze_params(model.encoder.enc1_2)
         else :
             print("Unfreeze encoder.stem ...!")
             unfreeze_params(model.module.encoder) if hasattr(model, 'module') else unfreeze_params(model.encoder)

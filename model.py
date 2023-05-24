@@ -8,7 +8,7 @@ from important.decoder.reg_decoder import AE_Decoder
 
 #from ..encoders import get_encoder
 from important.base.heads import SegmentationHead, ClassificationHead, ReconstructionHead
-from important.base.model import Multi_Task_Model
+from important.base.model import Multi_Task_Model, Dual_Task_Model_CLS_SEG
 
 import torch 
 import torch.nn as nn
@@ -55,22 +55,43 @@ class Up_SMART_Net(Multi_Task_Model):
         self.name = "SMART-Net-{}".format(encoder_name)
         self.initialize()
 
+## Dual
+    # CLS+SEG
+class Up_SMART_Net_Dual_CLS_SEG(Dual_Task_Model_CLS_SEG):
+    def __init__(
+        self,
+        encoder_name: str = "UNet",
+    ):
+        super().__init__()
 
-'''
-import os
-os.environ["CUDA_VISIBLE_DEVICES"]= "0"  # Set the GPU 0 to use
+        self.encoder = UNetEncoder()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # CLS
+        self.classification_head = ClassificationHead(
+            in_channels=1024, 
+            pooling='avg', 
+            dropout=0.5,
+            out_channels=1, 
+        )
 
-model = Up_SMART_Net().to(device) 
-test_input = torch.rand(3, 1, 224, 224).to(device)
-print(test_input.shape)
-test_output = model.forward(test_input)
-print(test_output[0].shape)
-print(test_output[1].shape)
-print(test_output[2].shape)
+        # SEG
+        self.seg_decoder = UNetDecoder()
+        
+        self.segmentation_head = SegmentationHead( # head 지금 사용 안 함.
+            in_channels=64,
+            out_channels=1,
+            kernel_size=3,
+        )
+        
+        self.segmentation_head = SegmentationHead( # head 지금 사용 안 함.
+            in_channels=64,
+            out_channels=1,
+            kernel_size=3,
+        )
 
-'''
+        self.name = "Dual-Net-{}".format(encoder_name)
+        self.initialize()
+
 ############ DOWN ############
 
 ## DownTask - SMART-Net
